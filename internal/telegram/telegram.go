@@ -1,0 +1,170 @@
+package telegram
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"strings"
+	"time"
+)
+
+type Client struct {
+	botToken string
+	chatID   string
+	client   *http.Client
+}
+
+func NewClient(botToken, chatID string) *Client {
+	return &Client{
+		botToken: botToken,
+		chatID:   chatID,
+		client: &http.Client{
+			Timeout: 15 * time.Second,
+		},
+	}
+}
+
+// GenerateOTP generates a random 6-digit numeric OTP
+func GenerateOTP() string {
+	b := make([]byte, 3)
+	_, _ = rand.Read(b)
+	n := (int(b[0])<<16 | int(b[1])<<8 | int(b[2])) % 1000000
+	return fmt.Sprintf("%06d", n)
+}
+
+// SendPhotoWithOTP sends the intruder image and the unlock OTP to the owner's Telegram
+func (c *Client) SendPhotoWithOTP(otp string, imageBase64 string) error {
+	if c.botToken == "" || c.chatID == "" {
+		return fmt.Errorf("telegram token or chat ID is not configured")
+	}
+
+	// Clean base64 header if present (e.g. data:image/jpeg;base64,...)
+	if idx := strings.Index(imageBase64, ","); idx != -1 {
+		imageBase64 = imageBase64[idx+1:]
+	}
+
+	imageBytes, err := base64.StdEncoding.DecodeString(imageBase64)
+	if err != nil {
+		return fmt.Errorf("failed to decode base64 image: %w", err)
+	}
+
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendPhoto", c.botToken)
+
+	var reqBody bytes.Buffer
+	writer := multipart.NewWriter(&reqBody)
+
+	_ = writer.WriteField("chat_id", c.chatID)
+	caption := fmt.Sprintf("⚠️ ALERT: Ada yang menyentuh laptop lu!\n\n🔑 Masukkan OTP ini di layar untuk unlock: <code>%s</code>\n🕒 Waktu: %s",
+		otp, time.Now().Format("2006-01-02 15:04:05"))
+	_ = writer.WriteField("caption", caption)
+	_ = writer.WriteField("parse_mode", "HTML")
+
+	part, err := writer.CreateFormFile("photo", "intruder.jpg")
+	if err != nil {
+		return err
+	}
+	if _, err := part.Write(imageBytes); err != nil {
+		return err
+	}
+
+	if err := writer.Close(); err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", url, &reqBody)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("telegram api returned status %d: %s", resp.StatusCode, string(respBytes))
+	}
+
+	return nil
+}
+
+// SendAlertMessage sends a text-only alert to Telegram (e.g. if camera is unavailable)
+func (c *Client) SendAlertMessage(message string) error {
+	if c.botToken == "" || c.chatID == "" {
+		return fmt.Errorf("telegram token or chat ID not set")
+	}
+
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", c.botToken)
+	payload := map[string]string{
+		"chat_id":    c.chatID,
+		"text":       message,
+		"parse_mode": "HTML",
+	}
+
+	jsonBytes, _ := json.Marshal(payload)
+	resp, err := c.client.Post(url, "application/json", bytes.NewBuffer(jsonBytes))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// StartPolling listens for remote commands like /nuke or /unlock
+func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func()) {
+	if c.botToken == "" {
+		return
+	}
+
+	offset := 0
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			url := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates?offset=%d&timeout=2", c.botToken, offset)
+			resp, err := c.client.Get(url)
+			if err != nil {
+				continue
+			}
+
+			var result struct {
+				Ok     bool `json:"ok"`
+				Result []struct {
+					UpdateID int `json:"update_id"`
+					Message  struct {
+						Text string `json:"text"`
+						Chat struct {
+							ID int64 `json:"id"`
+						} `json:"chat"`
+					} `json:"message"`
+				} `json:"result"`
+			}
+
+			if err := json.NewDecoder(resp.Body).Decode(&result); err == nil && result.Ok {
+				for _, u := range result.Result {
+					offset = u.UpdateID + 1
+					txt := strings.TrimSpace(u.Message.Text)
+					if txt == "/nuke" && onNuke != nil {
+						onNuke()
+					} else if txt == "/unlock" && onUnlock != nil {
+						onUnlock()
+					}
+				}
+			}
+			resp.Body.Close()
+		}
+	}
+}

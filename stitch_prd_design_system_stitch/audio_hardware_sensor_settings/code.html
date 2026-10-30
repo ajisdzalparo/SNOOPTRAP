@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"surface":"#050505","surface-bright":"#3a3939","secondary-container":"#13ff43","secondary-fixed":"#72ff70","border-alert":"#FF003C","outline-variant":"#5f3e3e","on-secondary-fixed-variant":"#00530e","surface-container-low":"#1c1b1b","warning":"#FF003C","surface-container-highest":"#353534","surface-tint":"#ffb3b2","on-tertiary-fixed-variant":"#004f51","inverse-surface":"#e5e2e1","on-background":"#e5e2e1","surface-container-lowest":"#0e0e0e","primary-container":"#ff525c","background-overlay":"rgba(10, 10, 10, 0.85)","on-surface-variant":"#e9bcba","primary-fixed-dim":"#ffb3b2","on-tertiary":"#003738","tertiary":"#6cd7d8","on-error-container":"#ffdad6","on-error":"#690005","text-secondary":"#8F8F8F","on-secondary-container":"#007117","primary-fixed":"#ffdad8","tertiary-container":"#2aa0a2","surface-container":"#201f1f","on-primary-fixed":"#410008","inverse-on-surface":"#313030","on-tertiary-container":"#002f30","primary":"#ffb3b2","inverse-primary":"#bf002a","on-primary-container":"#5b000f","surface-variant":"#353534","on-secondary-fixed":"#002203","tertiary-fixed-dim":"#6cd7d8","error":"#ffb4ab","text-primary":"#FFFFFF","on-tertiary-fixed":"#002020","error-container":"#93000a","on-secondary":"#003907","surface-dim":"#131313","surface-container-high":"#2a2a2a","on-primary-fixed-variant":"#92001e","on-surface":"#e5e2e1","secondary":"#ecffe3","on-primary":"#680012","secondary-fixed-dim":"#00e639","tertiary-fixed":"#8af3f5","background":"#131313","outline":"#af8786"},borderRadius:{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},spacing:{"space-xs":"4px","margin":"16px","3xl":"64px","xl":"32px","md":"16px","space-xl":"32px","space-lg":"24px","lg":"24px","space-sm":"8px","gutter":"16px","gutter-desktop":"24px","2xl":"48px","sm":"8px","margin-desktop":"32px","space-md":"16px","xs":"4px"},fontFamily:{"label-sm":["JetBrains Mono"],"code-sm":["'JetBrains Mono', monospace"],"body-md":["'JetBrains Mono', monospace"],"headline-lg":["JetBrains Mono"],"body-lg":["JetBrains Mono"],"h1":["'JetBrains Mono', 'Fira Code', monospace"],"headline-md":["JetBrains Mono"],"h2":["'JetBrains Mono', monospace"],"headline-xl-mobile":["JetBrains Mono"],"headline-xl":["JetBrains Mono"],"body-sm":["JetBrains Mono"],"label-md":["JetBrains Mono"]},fontSize:{"label-sm":["11px",{"lineHeight":"14px","letterSpacing":"0.1em","fontWeight":"600"}],"code-sm":["0.75rem",{"lineHeight":"16px","letterSpacing":"0.02em","fontWeight":"400"}],"body-md":["1rem",{"lineHeight":"1.5","fontWeight":"400"}],"headline-lg":["24px",{"lineHeight":"30px","letterSpacing":"0.02em","fontWeight":"600"}],"body-lg":["16px",{"lineHeight":"24px","fontWeight":"400"}],"h1":["3rem",{"lineHeight":"1.1","letterSpacing":"0.05em","fontWeight":"700"}],"headline-md":["20px",{"lineHeight":"26px","fontWeight":"600"}],"h2":["1.5rem",{"lineHeight":"1.2","fontWeight":"600"}],"headline-xl-mobile":["32px",{"lineHeight":"38px","letterSpacing":"0.05em","fontWeight":"700"}],"headline-xl":["48px",{"lineHeight":"52px","letterSpacing":"0.05em","fontWeight":"700"}],"body-sm":["12px",{"lineHeight":"16px","fontWeight":"400"}],"label-md":["14px",{"lineHeight":"18px","letterSpacing":"0.08em","fontWeight":"700"}]}}}};</script></head><body class="bg-surface text-on-surface font-body-md select-none"><header class="fixed top-0 left-0 right-0 h-16 bg-surface-container-lowest z-50 flex items-center justify-between px-margin-desktop border-b border-surface-container-highest"><div class="flex items-center gap-space-lg"><div class="flex items-center gap-space-sm"><div class="w-3 h-3 bg-warning hover:opacity-80 cursor-pointer"></div><div class="w-3 h-3 bg-surface-container-highest hover:opacity-80 cursor-pointer"></div><div class="w-3 h-3 bg-surface-container-highest hover:opacity-80 cursor-pointer"></div></div><div class="flex items-center gap-space-sm"><span class="text-warning font-h2 text-headline-md tracking-wider font-bold">SNOOPTRAP</span><span class="px-space-xs py-xs bg-surface-container-low border border-warning text-warning font-label-sm text-label-sm tracking-widest">ARMED // MONITORING</span></div><div class="hidden xl:flex items-center gap-space-md text-text-secondary font-code-sm text-code-sm"><span class="flex items-center gap-xs"><span class="w-1.5 h-1.5 bg-secondary-fixed-dim"></span>DAEMON: <span class="text-secondary-fixed-dim">RUNNING</span></span><span>|</span><span>HOST: <span class="text-on-surface">DESKTOP-SEC9</span></span><span>|</span><span>IP: <span class="text-on-surface">192.168.1.104</span></span></div></div><div class="flex items-center gap-space-md"><button class="px-space-md py-space-xs bg-transparent border border-warning text-warning hover:bg-warning hover:text-surface font-label-md text-label-md uppercase tracking-wider transition-none">EMERGENCY QUARANTINE</button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></header><aside class="fixed left-0 top-16 bottom-0 w-72 bg-surface-container-lowest z-40 flex flex-col justify-between border-r border-surface-container-highest"><div class="flex flex-col"><div class="px-space-lg py-space-md border-b border-surface-container-highest"><span class="font-label-sm text-label-sm text-text-secondary uppercase tracking-widest">OPERATIONAL ZONES</span></div><nav class="flex flex-col" data-active-classes="bg-surface-container-high text-warning border-l-2 border-warning"><a class="px-space-lg py-space-md flex items-center justify-between text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-none font-label-md text-label-md uppercase" data-path="dashboard" href="#"><span>Dashboard</span><span class="px-space-xs py-xs bg-secondary-container/10 text-secondary-fixed-dim text-label-sm">LIVE</span></a><a class="px-space-lg py-space-md flex items-center justify-between text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-none font-label-md text-label-md uppercase" data-path="the-trap" href="#"><span>The Trap</span><span class="px-space-xs py-xs bg-surface-container-high text-warning text-label-sm border border-warning/40">KIOSK</span></a><a class="px-space-lg py-space-md flex items-center justify-between text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-none font-label-md text-label-md uppercase" data-path="audio-hardware" href="#"><span>Audio &amp; Hardware</span><span class="text-secondary-fixed-dim text-label-sm">ACTIVE</span></a><a class="px-space-lg py-space-md flex items-center justify-between text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-none font-label-md text-label-md uppercase" data-path="telegram-2fa-gateway" href="#"><span>Telegram &amp; 2FA Gateway</span><span class="text-text-secondary text-label-sm">READY</span></a><a class="px-space-lg py-space-md flex items-center justify-between text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-none font-label-md text-label-md uppercase" data-path="incident-audit-logs" href="#"><span>Incident Audit Logs</span><span class="px-space-xs py-xs bg-warning text-surface font-bold text-label-sm">12 NEW</span></a></nav></div><div class="p-space-lg border-t border-surface-container-highest bg-surface-container-low"><div class="font-label-sm text-label-sm text-text-secondary uppercase mb-space-xs">TELEMETRY INTEGRITY</div><div class="font-code-sm text-code-sm text-secondary-fixed-dim tracking-wider">CAM // MIC // ACCEL 99.9%</div><div class="mt-space-xs w-full bg-surface h-1"><div class="bg-secondary-fixed-dim h-full w-[99.9%]"></div></div></div></aside><div class="pl-72"><main class="relative pt-16 bg-surface min-h-screen"><div class="flex flex-col w-full">
+<!-- System Header Description Banner -->
+<div class="px-margin-desktop py-space-md bg-surface-container-lowest border-b border-surface-container-highest">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-space-sm">
+<div class="flex items-center gap-space-sm">
+<span class="w-2 h-2 bg-secondary-fixed-dim"></span>
+<span class="font-code-sm text-code-sm text-text-secondary">SYSTEM SUBMODULE // SUBSYSTEM_04</span>
+<span class="text-surface-container-highest">/</span>
+<span class="font-label-sm text-label-sm text-secondary-fixed-dim uppercase tracking-widest">AUDIO_WASAPI_CORE_ROUTING</span>
+</div>
+<div class="font-code-sm text-code-sm text-text-secondary flex items-center gap-space-md">
+<span>SECURITY LEVEL: <span class="text-warning font-bold">LEVEL 3 HIGH</span></span>
+<span>|</span>
+<span>LATENCY TARGET: <span class="text-secondary-fixed-dim">1.2ms DMA</span></span>
+</div>
+</div>
+<p class="mt-xs font-code-sm text-code-sm text-text-secondary max-w-5xl leading-relaxed">
+      Low-level Win32 Core Audio API bindings, peripheral sensor triggers, and emergency playback override. Controls low-latency COM interfaces for zero-fallback intrusion acoustics.
+    </p>
+</div>
+<!-- Primary Operations Grid -->
+<div class="p-margin-desktop grid grid-cols-1 xl:grid-cols-12 gap-gutter-desktop">
+<!-- Left / Main Column (WASAPI & Sensors) -->
+<div class="xl:col-span-8 flex flex-col gap-space-lg">
+<!-- Panel 1: Targeted Audio Override & Shock Deterrent -->
+<div class="bg-surface-container-lowest border border-surface-container-highest p-space-lg flex flex-col gap-space-lg">
+<!-- Header -->
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-space-sm pb-space-sm border-b border-surface-container-highest">
+<div class="flex items-center gap-space-md">
+<div class="w-9 h-9 bg-surface-container-high border border-warning flex items-center justify-center text-warning">
+<span class="material-symbols-outlined text-[20px]">volume_up</span>
+</div>
+<div>
+<div class="flex items-center gap-space-sm">
+<h2 class="font-headline-md text-headline-md font-bold text-on-surface tracking-tight">Targeted Audio Override &amp; Shock Deterrent</h2>
+</div>
+<p class="font-code-sm text-code-sm text-text-secondary mt-xs">
+                IMMDeviceEnumerator // EDataFlow: eRender // ERole: eCommunications
+              </p>
+</div>
+</div>
+<div class="flex items-center gap-space-xs self-start md:self-auto">
+<span class="w-2 h-2 rounded-full bg-secondary-fixed-dim animate-ping"></span>
+<span class="px-space-sm py-xs bg-surface-container-high border border-secondary-fixed-dim/50 text-secondary-fixed-dim font-label-sm text-label-sm tracking-wider">
+              IMMDEVICE_OVERRIDE_ACTIVE
+            </span>
+</div>
+</div>
+<!-- Enumerated Endpoints Section -->
+<div class="flex flex-col gap-space-sm">
+<div class="flex items-center justify-between text-text-secondary font-label-sm text-label-sm tracking-wider uppercase">
+<span>ENUMERATED WASAPI HARDWARE ENDPOINTS</span>
+<span class="text-secondary-fixed-dim">3 Physical Devices Detected</span>
+</div>
+<!-- Device Card 1 (Active Target) -->
+<div class="p-space-md bg-surface-container-low border border-warning/80 flex flex-col gap-space-xs transition-colors">
+<div class="flex items-center justify-between flex-wrap gap-space-sm">
+<div class="flex items-center gap-space-sm">
+<span class="w-3 h-3 bg-secondary-fixed-dim rounded-full flex items-center justify-center ring-2 ring-secondary-fixed-dim/30"></span>
+<span class="font-label-md text-label-md font-bold text-on-surface">Realtek High Definition Audio (Internal Laptop Speakers)</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="px-space-xs py-xs bg-warning/20 border border-warning text-warning font-label-sm text-label-sm tracking-widest">
+                  TARGET_OVERRIDE
+                </span>
+<span class="px-space-xs py-xs bg-secondary-fixed-dim/20 border border-secondary-fixed-dim text-secondary-fixed-dim font-label-sm text-label-sm tracking-widest">
+                  DIRECT HARDWARE PATH ARMED
+                </span>
+</div>
+</div>
+<div class="mt-space-xs font-code-sm text-code-sm text-text-secondary grid grid-cols-1 md:grid-cols-3 gap-xs">
+<div>GUID: <span class="text-on-surface">{0.0.0.00000000}.{24f9-e31a-88bc-412e-990a12}</span></div>
+<div>FORMAT: <span class="text-on-surface">2.0 Stereo · 48,000 Hz / 24-bit</span></div>
+<div class="md:text-right">EXCLUSIVE: <span class="text-secondary-fixed-dim">AUDCLNT_SHAREMODE_EXCLUSIVE</span></div>
+</div>
+</div>
+<!-- Device Card 2 (Bypass/Ignored) -->
+<div class="p-space-md bg-surface-container-lowest border border-surface-container-highest flex flex-col gap-space-xs hover:border-surface-bright transition-colors">
+<div class="flex items-center justify-between flex-wrap gap-space-sm">
+<div class="flex items-center gap-space-sm">
+<span class="w-3 h-3 bg-surface-container-highest rounded-full"></span>
+<span class="font-label-md text-label-md font-medium text-text-secondary">Sony WH-1000XM5 (Bluetooth A2DP Stereo / Headset)</span>
+</div>
+<span class="px-space-xs py-xs bg-surface-container-high border border-surface-container-highest text-text-secondary font-label-sm text-label-sm tracking-widest">
+                BYPASS CANDIDATE - IGNORED ON TRAP
+              </span>
+</div>
+<div class="mt-space-xs font-code-sm text-code-sm text-text-secondary flex flex-col md:flex-row justify-between gap-xs">
+<div>GUID: <span class="text-text-secondary">{0.0.0.00000000}.{b831-77ad-45c1-9f201088}</span></div>
+<div>ROUTE STATUS: <span class="text-warning">Dynamic Route (Suppressed via Kernel)</span></div>
+</div>
+</div>
+<!-- Device Card 3 (Standby) -->
+<div class="p-space-md bg-surface-container-lowest border border-surface-container-highest flex flex-col gap-space-xs hover:border-surface-bright transition-colors opacity-70">
+<div class="flex items-center justify-between flex-wrap gap-space-sm">
+<div class="flex items-center gap-space-sm">
+<span class="w-3 h-3 bg-surface-container-highest rounded-full"></span>
+<span class="font-label-md text-label-md font-medium text-text-secondary">Realtek Digital Output (Optical SPDIF)</span>
+</div>
+<span class="px-space-xs py-xs bg-surface-container-high border border-surface-container-highest text-text-secondary font-label-sm text-label-sm tracking-widest">
+                STANDBY
+              </span>
+</div>
+<div class="mt-space-xs font-code-sm text-code-sm text-text-secondary flex flex-col md:flex-row justify-between gap-xs">
+<div>GUID: <span class="text-text-secondary">{0.0.0.00000000}.{421c-99ca-11aa-3004bb}</span></div>
+<div>FORMAT: <span class="text-text-secondary">PCM S/PDIF Encapsulated · 96kHz</span></div>
+</div>
+</div>
+</div>
+<!-- WASAPI Hardware Automation Toggles -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-space-md pt-space-sm border-t border-surface-container-highest">
+<!-- Toggle 1 -->
+<div class="p-space-md bg-surface-container-low border border-surface-container-highest flex flex-col justify-between gap-space-sm">
+<div class="flex items-start justify-between gap-space-sm">
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold text-on-surface">Force Unmute &amp; Master Gain Override</span>
+<span class="font-code-sm text-code-sm text-text-secondary mt-xs">
+                  Calls <code class="text-secondary-fixed-dim">ISimpleAudioVolume::SetMasterVolume(1.0)</code> and clears system mute flag instantly when alarm is tripped.
+                </span>
+</div>
+<button aria-checked="true" class="w-12 h-6 bg-secondary-fixed-dim/20 border border-secondary-fixed-dim p-0.5 flex items-center justify-end shrink-0 cursor-pointer" role="switch" type="button">
+<span class="w-4 h-4 bg-secondary-fixed-dim block"></span>
+</button>
+</div>
+</div>
+<!-- Toggle 2 -->
+<div class="p-space-md bg-surface-container-low border border-surface-container-highest flex flex-col justify-between gap-space-sm">
+<div class="flex items-start justify-between gap-space-sm">
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold text-on-surface">Headset / Default Route Bypass</span>
+<span class="font-code-sm text-code-sm text-text-secondary mt-xs">
+                  Ignores active user headphones. Streams deterrent audio directly to internal chassis speakers to disorient intruder physically.
+                </span>
+</div>
+<button aria-checked="true" class="w-12 h-6 bg-secondary-fixed-dim/20 border border-secondary-fixed-dim p-0.5 flex items-center justify-end shrink-0 cursor-pointer" role="switch" type="button">
+<span class="w-4 h-4 bg-secondary-fixed-dim block"></span>
+</button>
+</div>
+</div>
+</div>
+<!-- Shock Siren Acoustic Controls & Live Meters -->
+<div class="p-space-md bg-surface border border-surface-container-highest flex flex-col gap-space-md">
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-space-md">
+<div class="flex-1 flex flex-col gap-space-xs">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">SHOCK SIREN ACOUSTIC WAVEFORM</span>
+<span class="font-label-sm text-label-sm text-warning font-bold">120DB SWEEP PROFILE</span>
+</div>
+<div class="relative">
+<select class="w-full bg-surface-container-low border border-surface-container-highest text-on-surface px-space-md py-space-sm font-code-sm text-code-sm focus:border-warning focus:outline-none appearance-none cursor-pointer">
+<option selected="">Acoustic Disruption Siren v2 (120dB ultrasonic sweep)</option>
+<option>High-Frequency Tonal Burst (16.5kHz Pulsed Deterrent)</option>
+<option>Continuous Sub-Bass Dread Resonance (40Hz Ground Wave)</option>
+<option>Synthesized Police/Alarm Multitone (Raw PCM 100%)</option>
+</select>
+<span class="material-symbols-outlined absolute right-space-md top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none text-[18px]">expand_more</span>
+</div>
+</div>
+<!-- Action Button -->
+<button class="h-[42px] px-space-lg bg-transparent border border-warning text-warning hover:bg-warning hover:text-surface font-label-md text-label-md uppercase tracking-wider flex items-center justify-center gap-space-xs transition-none cursor-pointer" id="btn-test-probe">
+<span class="material-symbols-outlined text-[18px]">volume_up</span>
+<span>TEST SHOCK AUDIO (3S PROBE)</span>
+</button>
+</div>
+<!-- Real-Time Peak Envelope -->
+<div class="flex flex-col gap-xs pt-space-xs">
+<div class="flex items-center justify-between font-code-sm text-code-sm text-text-secondary">
+<span class="font-label-sm text-label-sm text-text-secondary uppercase">WASAPI IAudioMeterInformation // Real-time Peak Envelope</span>
+<div class="flex items-center gap-space-md">
+<span>-12 dB</span>
+<span class="text-on-surface font-bold">-3 dB</span>
+<span class="text-warning font-bold">0 dB [CLIP]</span>
+</div>
+</div>
+<!-- Channel L -->
+<div class="flex items-center gap-space-md font-code-sm text-code-sm">
+<span class="w-4 text-text-secondary font-bold">L</span>
+<div class="flex-1 h-3 bg-surface-container-low border border-surface-container-highest overflow-hidden relative">
+<div class="h-full bg-gradient-to-r from-secondary-fixed-dim via-secondary-container to-warning transition-all duration-75" id="meter-l" style="width: 86%;"></div>
+</div>
+<span class="w-12 text-right text-secondary-fixed-dim font-bold" id="meter-l-val">-1.4dB</span>
+</div>
+<!-- Channel R -->
+<div class="flex items-center gap-space-md font-code-sm text-code-sm">
+<span class="w-4 text-text-secondary font-bold">R</span>
+<div class="flex-1 h-3 bg-surface-container-low border border-surface-container-highest overflow-hidden relative">
+<div class="h-full bg-gradient-to-r from-secondary-fixed-dim via-secondary-container to-warning transition-all duration-75" id="meter-r" style="width: 82%;"></div>
+</div>
+<span class="w-12 text-right text-secondary-fixed-dim font-bold" id="meter-r-val">-1.8dB</span>
+</div>
+<div class="flex items-center justify-between text-code-sm font-code-sm text-text-secondary pt-xs">
+<span>* Safe-Preview mode limits local probe burst to 35% attenuation to prevent acoustic trauma to operator.</span>
+<span class="text-secondary-fixed-dim">HARDWARE_DMA: READY</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Panel 2: Peripheral Intrusion Sensor Calibration -->
+<div class="bg-surface-container-lowest border border-surface-container-highest p-space-lg flex flex-col gap-space-lg">
+<!-- Header -->
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-space-sm pb-space-sm border-b border-surface-container-highest">
+<div class="flex items-center gap-space-md">
+<div class="w-9 h-9 bg-surface-container-high border border-tertiary flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined text-[20px]">sensors</span>
+</div>
+<div>
+<h2 class="font-headline-md text-headline-md font-bold text-on-surface tracking-tight">Peripheral Intrusion Sensor Calibration</h2>
+<p class="font-code-sm text-code-sm text-text-secondary mt-xs">
+                Win32 Raw Input Service &amp; DirectShow Kernel Capture
+              </p>
+</div>
+</div>
+<div class="flex items-center gap-space-xs self-start md:self-auto">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<span class="px-space-sm py-xs bg-surface-container-high border border-tertiary/50 text-tertiary font-label-sm text-label-sm tracking-wider">
+              HOOKS_RUNNING
+            </span>
+</div>
+</div>
+<!-- Sliders Matrix -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-space-lg">
+<!-- Slider 1 -->
+<div class="p-space-md bg-surface-container-low border border-surface-container-highest flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface font-bold">Idle Arming Threshold</span>
+<span class="font-code-sm text-code-sm text-secondary-fixed-dim font-bold" id="slider-idle-val">180s (3m 00s)</span>
+</div>
+<p class="font-code-sm text-code-sm text-text-secondary">
+              Win32 <code class="text-on-surface">GetLastInputInfo</code> watchdog time window before SnoopTrap silently transitions into the armed intercept state.
+            </p>
+<div class="mt-space-xs flex flex-col gap-xs">
+<input class="w-full accent-warning cursor-pointer bg-surface h-1.5 rounded-none" id="slider-idle" max="900" min="30" step="15" type="range" value="180"/>
+<div class="flex justify-between font-code-sm text-code-sm text-text-secondary">
+<span>30s (Rapid Trigger)</span>
+<span>Default: 180s</span>
+<span>15m (Relaxed)</span>
+</div>
+</div>
+</div>
+<!-- Slider 2 -->
+<div class="p-space-md bg-surface-container-low border border-surface-container-highest flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface font-bold">Mouse Movement Jitter Filter</span>
+<span class="font-code-sm text-code-sm text-warning font-bold" id="slider-jitter-val">15px Delta Suppression</span>
+</div>
+<p class="font-code-sm text-code-sm text-text-secondary">
+              Sub-pixel acceleration deadband. Disregards structural desk vibration, heavy typing, and laptop chassis bumps.
+            </p>
+<div class="mt-space-xs flex flex-col gap-xs">
+<input class="w-full accent-warning cursor-pointer bg-surface h-1.5 rounded-none" id="slider-jitter" max="60" min="2" step="1" type="range" value="15"/>
+<div class="flex justify-between font-code-sm text-code-sm text-text-secondary">
+<span>2px (Hyper-sensitive)</span>
+<span>Recommended: 15px</span>
+<span>60px (Gross movement)</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Raw Keyboard & Video Capture Controls -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-space-lg pt-space-xs">
+<!-- Keyboard Intercept -->
+<div class="p-space-md bg-surface border border-surface-container-highest flex flex-col justify-between gap-space-md">
+<div>
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md font-bold text-on-surface">WH_KEYBOARD_LL Intercept</span>
+<button aria-checked="true" class="w-12 h-6 bg-secondary-fixed-dim/20 border border-secondary-fixed-dim p-0.5 flex items-center justify-end shrink-0 cursor-pointer" role="switch" type="button">
+<span class="w-4 h-4 bg-secondary-fixed-dim block"></span>
+</button>
+</div>
+<p class="font-code-sm text-code-sm text-text-secondary mt-xs">
+                Suppresses system escape keys and redirects raw keystroke events to trap validation before passing to OS shell.
+              </p>
+</div>
+<div class="flex flex-col gap-xs">
+<span class="font-label-sm text-label-sm text-text-secondary uppercase">KEY COMBINATIONS SUPPRESSED:</span>
+<div class="flex flex-wrap gap-xs">
+<span class="px-space-xs py-xs bg-surface-container-high border border-surface-container-highest font-code-sm text-code-sm text-warning font-bold">Alt + Tab</span>
+<span class="px-space-xs py-xs bg-surface-container-high border border-surface-container-highest font-code-sm text-code-sm text-warning font-bold">Alt + F4</span>
+<span class="px-space-xs py-xs bg-surface-container-high border border-surface-container-highest font-code-sm text-code-sm text-warning font-bold">WinKey / Start</span>
+<span class="px-space-xs py-xs bg-surface-container-high border border-surface-container-highest font-code-sm text-code-sm text-warning font-bold">Ctrl + Esc</span>
+</div>
+</div>
+</div>
+<!-- Video Capture Configuration -->
+<div class="p-space-md bg-surface border border-surface-container-highest flex flex-col justify-between gap-space-md">
+<div>
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md font-bold text-on-surface">Silent DirectShow Video Capture</span>
+<span class="px-space-xs py-xs bg-tertiary/10 border border-tertiary text-tertiary font-label-sm text-label-sm">PROBE_READY</span>
+</div>
+<div class="mt-space-sm flex flex-col gap-xs">
+<span class="font-label-sm text-label-sm text-text-secondary uppercase">VIDEO DEVICE ENDPOINT</span>
+<select class="w-full bg-surface-container-low border border-surface-container-highest text-on-surface px-space-sm py-xs font-code-sm text-code-sm focus:border-tertiary focus:outline-none">
+<option selected="">Integrated HD Webcam (0.1s Zero-LED Fast Capture)</option>
+<option>USB Video Device / External Lens (Auxiliary Cam 01)</option>
+</select>
+</div>
+</div>
+<div class="flex flex-col gap-space-xs">
+<label class="flex items-center gap-space-sm cursor-pointer select-none">
+<input checked="" class="w-4 h-4 rounded-none accent-warning bg-surface border border-surface-container-highest cursor-pointer" type="checkbox"/>
+<span class="font-code-sm text-code-sm text-on-surface">Silent snapshot (Zero preview window, single frame buffer)</span>
+</label>
+<label class="flex items-center gap-space-sm cursor-pointer select-none">
+<input checked="" class="w-4 h-4 rounded-none accent-warning bg-surface border border-surface-container-highest cursor-pointer" type="checkbox"/>
+<span class="font-code-sm text-code-sm text-on-surface">High-Illumination Screen Strobe Flash (For dark rooms)</span>
+</label>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column (Fail-Safe & JSON Buffer Inspector) -->
+<div class="xl:col-span-4 flex flex-col gap-space-lg">
+<!-- Panel: Anti-Bypass & Nuclear Fail-Safe -->
+<div class="bg-surface-container-lowest border border-surface-container-highest p-space-lg flex flex-col gap-space-md">
+<!-- Header -->
+<div class="flex items-start justify-between pb-space-sm border-b border-surface-container-highest">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-warning text-[22px]">gavel</span>
+<div class="flex flex-col">
+<h2 class="font-headline-md text-headline-md font-bold text-on-surface leading-tight">Anti-Bypass &amp; Nuclear Fail-Safe</h2>
+</div>
+</div>
+<span class="px-space-xs py-xs bg-warning text-surface font-label-sm text-label-sm font-bold tracking-widest shrink-0">
+            LEVEL 3 HIGH
+          </span>
+</div>
+<p class="font-code-sm text-code-sm text-text-secondary leading-relaxed">
+          Kernel watchdog monitors foreground window handles and secure attention sequences. Select the retaliatory mitigation posture when tamper or focus break is identified.
+        </p>
+<div class="p-space-xs bg-surface-container-low border border-surface-container-highest font-code-sm text-code-sm flex items-center justify-between">
+<span class="text-text-secondary">Win32 GetForegroundWindow</span>
+<span class="text-secondary-fixed-dim font-bold">16ms (60 FPS Polling)</span>
+</div>
+<!-- Mitigation Options (Radio Selector) -->
+<div class="flex flex-col gap-space-sm mt-xs">
+<span class="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">PROTOCOL ON FOCUS DROP OR CTRL+ALT+DEL</span>
+<!-- Option 1: Workstation Lock (Active) -->
+<label class="p-space-md bg-surface border border-warning flex items-start gap-space-md cursor-pointer hover:bg-surface-container-low transition-colors">
+<input checked="" class="mt-1 accent-warning cursor-pointer" name="failsafe_action" type="radio"/>
+<div class="flex flex-col gap-xs">
+<span class="font-label-md text-label-md font-bold text-on-surface">Windows Workstation Lock</span>
+<code class="font-code-sm text-code-sm text-secondary-fixed-dim">user32.dll :: LockWorkStation()</code>
+<span class="font-code-sm text-code-sm text-text-secondary">
+                Instantly dumps session to Windows Hello / BitLocker login. Halts any desktop snooper on site. [RECOMMENDED]
+              </span>
+</div>
+</label>
+<!-- Option 2: Kill Target Processes -->
+<label class="p-space-md bg-surface-container-lowest border border-surface-container-highest flex items-start gap-space-md cursor-pointer hover:border-surface-bright transition-colors">
+<input class="mt-1 accent-warning cursor-pointer" name="failsafe_action" type="radio"/>
+<div class="flex flex-col gap-xs">
+<span class="font-label-md text-label-md font-bold text-on-surface">Targeted Process Termination</span>
+<code class="font-code-sm text-code-sm text-warning">taskkill /IM WhatsApp.exe /IM Code.exe /F</code>
+<span class="font-code-sm text-code-sm text-text-secondary">
+                Immediately wipes open confidential apps from memory without terminating SnoopTrap core service.
+              </span>
+</div>
+</label>
+<!-- Option 3: Hard Nuclear Zeroization -->
+<label class="p-space-md bg-surface-container-lowest border border-surface-container-highest flex items-start gap-space-md cursor-pointer hover:border-surface-bright transition-colors">
+<input class="mt-1 accent-warning cursor-pointer" name="failsafe_action" type="radio"/>
+<div class="flex flex-col gap-xs">
+<span class="font-label-md text-label-md font-bold text-warning">Emergency Zeroization Shutdown</span>
+<code class="font-code-sm text-code-sm text-warning">ntdll.dll :: NtShutdownSystem(2)</code>
+<span class="font-code-sm text-code-sm text-text-secondary">
+                Immediate system cut-off with zero filesystem flush. Clears cold-boot RAM attacks.
+              </span>
+</div>
+</label>
+</div>
+</div>
+<!-- Panel: Persistent Storage Inspector -->
+<div class="bg-surface-container-lowest border border-surface-container-highest p-space-lg flex flex-col gap-space-md">
+<!-- Header -->
+<div class="flex items-center justify-between pb-space-sm border-b border-surface-container-highest">
+<div class="flex items-center gap-space-sm">
+<span class="font-headline-md text-headline-md font-bold text-on-surface font-code-sm">{ }</span>
+<h2 class="font-headline-md text-headline-md font-bold text-on-surface leading-tight">Persistent Storage Inspector</h2>
+</div>
+<span class="px-space-xs py-xs bg-yellow-500/20 border border-yellow-500 text-yellow-400 font-label-sm text-label-sm tracking-wider">
+            LIVE BUFFER
+          </span>
+</div>
+<div class="flex items-center justify-between font-code-sm text-code-sm text-text-secondary">
+<span>Target Payload: <span class="text-on-surface font-bold">config.json</span></span>
+<span>UTF-8 // 442 BYTES</span>
+</div>
+<!-- Code Block -->
+<pre class="bg-surface p-space-md border border-surface-container-highest font-code-sm text-code-sm overflow-x-auto text-text-secondary leading-snug select-text"><code>{
+  <span class="text-primary">"version"</span>: <span class="text-secondary-fixed-dim">"1.1.4"</span>,
+  <span class="text-primary">"audio"</span>: {
+    <span class="text-primary">"target_guid"</span>: <span class="text-secondary-fixed-dim">"{0.0.0.00000000}.{24f9-e31a}"</span>,
+    <span class="text-primary">"force_unmute"</span>: <span class="text-warning">true</span>,
+    <span class="text-primary">"volume_pct"</span>: <span class="text-secondary-fixed-dim">100</span>,
+    <span class="text-primary">"bypass_default_device"</span>: <span class="text-warning">true</span>,
+    <span class="text-primary">"siren_profile"</span>: <span class="text-secondary-fixed-dim">"acoustic_disruption_v2"</span>
+  },
+  <span class="text-primary">"sensors"</span>: {
+    <span class="text-primary">"idle_timeout_sec"</span>: <span class="text-secondary-fixed-dim">180</span>,
+    <span class="text-primary">"jitter_suppression_px"</span>: <span class="text-secondary-fixed-dim">15</span>,
+    <span class="text-primary">"ll_keyboard_hook"</span>: <span class="text-warning">true</span>,
+    <span class="text-primary">"directshow_silent"</span>: <span class="text-warning">true</span>,
+    <span class="text-primary">"flash_strobe"</span>: <span class="text-warning">true</span>
+  },
+  <span class="text-primary">"anti_bypass"</span>: {
+    <span class="text-primary">"action"</span>: <span class="text-secondary-fixed-dim">"LockWorkStation"</span>,
+    <span class="text-primary">"watchdog_polling_ms"</span>: <span class="text-secondary-fixed-dim">16</span>
+  }
+}</code></pre>
+<!-- Inspector Buttons -->
+<div class="flex items-center gap-space-md pt-xs">
+<button class="flex-1 py-space-sm bg-transparent border border-surface-container-highest text-text-secondary hover:text-on-surface hover:border-text-secondary font-label-sm text-label-sm uppercase tracking-wider transition-none cursor-pointer" id="btn-reset-config">
+            RESET TO SAFE DEFAULTS
+          </button>
+<button class="flex-1 py-space-sm bg-surface-container-high border border-secondary-fixed-dim text-secondary-fixed-dim hover:bg-secondary-fixed-dim hover:text-surface font-label-sm text-label-sm uppercase tracking-wider flex items-center justify-center gap-xs transition-none cursor-pointer" id="btn-export-payload">
+<span class="material-symbols-outlined text-[16px]">download</span>
+<span>EXPORT PAYLOAD</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<script>
+  // UI Interactions for Audio & Sensor Hardware Console
+  document.addEventListener('DOMContentLoaded', () => {
+    // Slider updates
+    const idleSlider = document.getElementById('slider-idle');
+    const idleVal = document.getElementById('slider-idle-val');
+    if (idleSlider && idleVal) {
+      idleSlider.addEventListener('input', (e) => {
+        const val = e.target.value;
+        const mins = Math.floor(val / 60);
+        const secs = (val % 60).toString().padStart(2, '0');
+        idleVal.textContent = `${val}s (${mins}m ${secs}s)`;
+      });
+    }
+
+    const jitterSlider = document.getElementById('slider-jitter');
+    const jitterVal = document.getElementById('slider-jitter-val');
+    if (jitterSlider && jitterVal) {
+      jitterSlider.addEventListener('input', (e) => {
+        jitterVal.textContent = `${e.target.value}px Delta Suppression`;
+      });
+    }
+
+    // Audio test probe meter pulsation
+    const testProbeBtn = document.getElementById('btn-test-probe');
+    const meterL = document.getElementById('meter-l');
+    const meterR = document.getElementById('meter-r');
+    const meterLVal = document.getElementById('meter-l-val');
+    const meterRVal = document.getElementById('meter-r-val');
+
+    let probeInterval = null;
+
+    if (testProbeBtn && meterL && meterR) {
+      testProbeBtn.addEventListener('click', () => {
+        const originalText = testProbeBtn.innerHTML;
+        testProbeBtn.classList.add('bg-warning', 'text-surface');
+        testProbeBtn.innerHTML = '<span class="material-symbols-outlined text-[18px] animate-spin">sync</span><span>TRANSMITTING BURST (3S)...</span>';
+
+        let ticks = 0;
+        clearInterval(probeInterval);
+        probeInterval = setInterval(() => {
+          ticks++;
+          const randomL = Math.floor(70 + Math.random() * 29);
+          const randomR = Math.floor(68 + Math.random() * 31);
+          meterL.style.width = `${randomL}%`;
+          meterR.style.width = `${randomR}%`;
+          meterLVal.textContent = `-${(100 - randomL) * 0.15}`.substring(0, 5) + 'dB';
+          meterRVal.textContent = `-${(100 - randomR) * 0.15}`.substring(0, 5) + 'dB';
+
+          if (ticks > 15) {
+            clearInterval(probeInterval);
+            meterL.style.width = '86%';
+            meterR.style.width = '82%';
+            meterLVal.textContent = '-1.4dB';
+            meterRVal.textContent = '-1.8dB';
+            testProbeBtn.classList.remove('bg-warning', 'text-surface');
+            testProbeBtn.innerHTML = originalText;
+          }
+        }, 200);
+      });
+    }
+
+    // Reset Defaults notification
+    const btnReset = document.getElementById('btn-reset-config');
+    if (btnReset) {
+      btnReset.addEventListener('click', () => {
+        const orig = btnReset.textContent;
+        btnReset.textContent = "DEFAULTS APPLIED";
+        btnReset.classList.add('text-secondary-fixed-dim');
+        setTimeout(() => {
+          btnReset.textContent = orig;
+          btnReset.classList.remove('text-secondary-fixed-dim');
+        }, 1500);
+      });
+    }
+
+    // Export button flash
+    const btnExport = document.getElementById('btn-export-payload');
+    if (btnExport) {
+      btnExport.addEventListener('click', () => {
+        const span = btnExport.querySelector('span:last-child');
+        if (span) {
+          const orig = span.textContent;
+          span.textContent = "PAYLOAD BUFFER SAVED";
+          setTimeout(() => { span.textContent = orig; }, 1500);
+        }
+      });
+    }
+  });
+</script></main></div></body></html>

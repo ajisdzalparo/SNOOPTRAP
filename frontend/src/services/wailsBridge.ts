@@ -1,0 +1,163 @@
+// Typed Wails bridge interface
+
+export interface Config {
+  telegramBotToken: string;
+  telegramChatId: string;
+  idleThresholdSeconds: number;
+  targetAudioDeviceGuid: string;
+  autoArm: boolean;
+  nuclearAction: string;
+  targetKillProcess: string;
+}
+
+export interface AudioDevice {
+  id: string;
+  name: string;
+  isDefault: boolean;
+}
+
+export interface SystemStatus {
+  state: 'DISARMED' | 'ARMED' | 'TRIGGERED';
+  idleSeconds: number;
+  isArmed: boolean;
+  hasOtp: boolean;
+}
+
+declare global {
+  interface Window {
+    go?: {
+      main: {
+        App: {
+          GetConfig: () => Promise<Config>;
+          SaveConfig: (cfg: Config) => Promise<void>;
+          GetAudioDevices: () => Promise<AudioDevice[]>;
+          ArmSystem: () => Promise<void>;
+          DisarmSystem: (passcode: string) => Promise<boolean>;
+          VerifyOTP: (code: string) => Promise<boolean>;
+          TriggerTrap: () => Promise<void>;
+          ProcessIntruderCapture: (base64Image: string) => Promise<boolean>;
+          GetLogs: () => Promise<string[]>;
+          GetStatus: () => Promise<SystemStatus>;
+          TestTrap: () => Promise<void>;
+          EmergencyLock: () => Promise<void>;
+          StopAlarm: () => Promise<void>;
+        };
+      };
+    };
+    runtime?: {
+      EventsOn: (eventName: string, callback: (...args: any[]) => void) => void;
+      EventsEmit: (eventName: string, ...args: any[]) => void;
+    };
+  }
+}
+
+// Fallback mock for browser-only dev mode
+const mockConfig: Config = {
+  telegramBotToken: '',
+  telegramChatId: '',
+  idleThresholdSeconds: 180,
+  targetAudioDeviceGuid: 'default',
+  autoArm: true,
+  nuclearAction: 'lock',
+  targetKillProcess: 'WhatsApp.exe',
+};
+
+const mockLogs = [
+  '[21:45:00] [SYSTEM] SnoopTrap Core engine booted.',
+  '[21:45:01] [HOOK] Low-level keyboard hook ready (WH_KEYBOARD_LL)',
+  '[21:45:01] [AUDIO] WASAPI audio override layer connected.',
+  '[21:45:02] [TG_BOT] Gateway initialized.',
+];
+
+export const WailsBridge = {
+  isWails: (): boolean => !!window.go?.main?.App,
+
+  async getConfig(): Promise<Config> {
+    if (window.go?.main?.App) {
+      return await window.go.main.App.GetConfig();
+    }
+    return mockConfig;
+  },
+
+  async saveConfig(cfg: Config): Promise<void> {
+    if (window.go?.main?.App) {
+      return await window.go.main.App.SaveConfig(cfg);
+    }
+    console.log('Saved config (mock):', cfg);
+  },
+
+  async getAudioDevices(): Promise<AudioDevice[]> {
+    if (window.go?.main?.App) {
+      return await window.go.main.App.GetAudioDevices();
+    }
+    return [
+      { id: 'default', name: 'Realtek Internal Speaker (Laptop)', isDefault: true },
+      { id: 'bt_headset', name: 'Sony WH-1000XM4 (Bluetooth Headset)', isDefault: false },
+    ];
+  },
+
+  async armSystem(): Promise<void> {
+    if (window.go?.main?.App) {
+      await window.go.main.App.ArmSystem();
+    }
+  },
+
+  async disarmSystem(code: string): Promise<boolean> {
+    if (window.go?.main?.App) {
+      return await window.go.main.App.DisarmSystem(code);
+    }
+    return code === '123456' || code === '888888';
+  },
+
+  async verifyOTP(code: string): Promise<boolean> {
+    if (window.go?.main?.App) {
+      return await window.go.main.App.VerifyOTP(code);
+    }
+    return code === '123456' || code === '888888';
+  },
+
+  async triggerTrap(): Promise<void> {
+    if (window.go?.main?.App) {
+      await window.go.main.App.TriggerTrap();
+    }
+  },
+
+  async processIntruderCapture(base64Image: string): Promise<boolean> {
+    if (window.go?.main?.App) {
+      return await window.go.main.App.ProcessIntruderCapture(base64Image);
+    }
+    console.log('Captured intruder image (mock, length):', base64Image.length);
+    return true;
+  },
+
+  async getLogs(): Promise<string[]> {
+    if (window.go?.main?.App) {
+      return await window.go.main.App.GetLogs();
+    }
+    return mockLogs;
+  },
+
+  async getStatus(): Promise<SystemStatus> {
+    if (window.go?.main?.App) {
+      return await window.go.main.App.GetStatus();
+    }
+    return {
+      state: 'DISARMED',
+      idleSeconds: 42,
+      isArmed: false,
+      hasOtp: false,
+    };
+  },
+
+  async emergencyLock(): Promise<void> {
+    if (window.go?.main?.App) {
+      await window.go.main.App.EmergencyLock();
+    }
+  },
+
+  onEvent(event: string, callback: (...args: any[]) => void): void {
+    if (window.runtime?.EventsOn) {
+      window.runtime.EventsOn(event, callback);
+    }
+  },
+};

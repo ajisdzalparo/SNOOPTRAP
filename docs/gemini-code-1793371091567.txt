@@ -1,0 +1,72 @@
+[CONTEXT]
+Design a Fullscreen Kiosk Lockbox screen for a Windows Desktop Intruder Detection System named "SnoopTrap". The product is built with React and Wails. The purpose of this screen is to trap and intimidate unauthorized users who touch the laptop, while requiring a 6-digit OTP sent via Telegram to unlock it.
+
+[OVERALL STYLE]
+Visual style: Cyber Security / Hacker Terminal / Cyberpunk. 
+Mood: Intimidating, highly technical, urgent, raw. 
+Inspired by: Matrix terminal screens, military UI, and advanced security dashboards. 
+The interface feels severe and inescapable. It uses a native dark mode with heavy red alert accents and glowing monospace typography.
+
+[SCREEN TO GENERATE]
+Generate the "Intruder Lockbox" fullscreen screen with this layout:
+- Background: A frosted glass effect using `backdrop-filter: blur(20px)` over a very dark, semi-transparent overlay to mask the OS background.
+- Top Left/Right (HUD Elements): Decorative small terminal text showing fake system status (e.g., "AUDIO_OVERRIDE: MAX_VOL", "WEBCAM_CAPTURE: TRANSMITTED", "TG_BOT_SYNC: CONNECTED").
+- Main Center (The Trap): A sharp, bordered central terminal panel with a glowing red edge. 
+  - A massive, flashing red headline: "UNAUTHORIZED ACCESS DETECTED".
+  - Sub-headline: "System locked. Identity captured and transmitted. Audio bypass active."
+  - A large, prominent 6-digit OTP input form with centered, heavily spaced monospace characters.
+  - A sharp-edged submit button reading "VERIFY_OTP".
+- Bottom: A scrolling or static terminal log box showing raw system outputs to look like a hacker console (e.g., "Executing Win32 Hooks...", "Blocking Keyboard...", "Awaiting Telegram response...").
+
+[COMPONENTS]
+Required components:
+- System Status HUD: Monospace text indicators with green or red dots.
+- Alert Banner: High-contrast red panel with black text for the main warning.
+- OTP Input Field: 6 separate character boxes or one large letter-spaced input, sharp corners (0px radius), 1px solid red border, glowing focus state.
+- Terminal Log Box: A small window panel with a 1px border and glowing green monospace text.
+
+[DESIGN TOKENS]
+Colors:
+- Primary/Alert: #FF003C (Cyberpunk Neon Red, used for warnings, borders, and main CTA)
+- Secondary/Terminal: #00FF41 (Matrix Green, used for system logs and HUD text)
+- Background: rgba(10, 10, 10, 0.85) (Deep dark overlay)
+- Surface: #050505 (Pitch black for the main terminal panel)
+- Text-primary: #FFFFFF (Pure white for high readability on dark)
+- Text-secondary: #8F8F8F (Muted gray)
+
+Typography:
+- Headings & Body: "JetBrains Mono", "Fira Code", or "Space Mono" (Strictly monospaced everywhere).
+- Main Alert (H1): 48px, weight 700, line-height 1.1, text-shadow 0 0 10px rgba(255,0,60,0.8).
+- Subhead: 16px, weight 400.
+- OTP Input: 32px, weight 700, letter-spacing 0.5em.
+- Terminal Logs: 12px, weight 400, color #00FF41.
+
+Spacing: 4px strict grid system. Dense technical layout for HUD, but generous breathing room around the central OTP panel.
+Border radius: 0px (Absolute sharp edges for a harsh, brutalist hacker feel).
+Elevation: Flat, relying on 1px borders and heavy neon `box-shadow` glows (e.g., `0 0 20px rgba(255,0,60,0.3)`) instead of standard drop shadows.
+
+[CONTENT]
+Main Headline: "UNAUTHORIZED ACCESS DETECTED"
+Sub-headline: "CRITICAL BREACH. Enter Telegram 2FA code to disarm system."
+OTP Placeholder: "• • • • • •"
+CTA button: "> INITIATE_UNLOCK"
+Terminal logs sample: 
+"[SYSTEM] Keyboard hooks injected: WH_KEYBOARD_LL"
+"[AUDIO] WASAPI Override targeting Realtek Internal..."
+"[NET] Multipart POST image to Telegram API: SUCCESS"
+
+[INTERACTIONS]
+- Input Focus: Border turns from dim red to bright neon red (#FF003C) with a glowing box-shadow.
+- Button Hover: Background inverts to solid #FF003C, text becomes #050505.
+- Alert Text: Subtle CSS pulse animation on the text shadow to feel like a flashing alarm.
+
+[RESPONSIVE]
+Desktop-only (100vw, 100vh). No mobile breakpoints needed as this is a Windows Desktop lock screen. Lock the central panel to max-width 700px.
+
+[TECH OUTPUT]
+Generate code as Next.js + React + Tailwind CSS. Use semantic HTML. Ensure the background utilizes `backdrop-blur-xl`.
+
+[RULES TO NEVER BREAK]
+- Never use rounded corners (border-radius must be 0).
+- Never use standard sans-serif fonts; the entire UI must use a monospace font to sell the hacker aesthetic.
+- Always make the red warning text the most dominant visual element on the screen.

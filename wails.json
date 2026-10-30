@@ -1,0 +1,20 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "snooptrap",
+  "outputfilename": "snooptrap",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Ajis Dzalparo",
+    "email": "ajis@atmarbyte.com"
+  },
+  "info": {
+    "companyName": "Atmarbyte",
+    "productName": "SnoopTrap",
+    "productVersion": "1.1.0",
+    "copyright": "Copyright (c) 2026 Atmarbyte",
+    "comments": "Intruder Detection System (IDS) for Windows"
+  }
+}

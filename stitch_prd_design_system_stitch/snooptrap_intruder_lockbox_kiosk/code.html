@@ -1,0 +1,425 @@
+<!DOCTYPE html><html class="dark" lang="en"><svg class="inline-defs-container" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden"></svg><head><style class="">
+@keyframes border-pulse-red {
+  0%, 100% {
+    border-color: rgba(255, 0, 60, 0.7);
+    box-shadow: 0 0 15px rgba(255, 0, 60, 0.35), inset 0 0 12px rgba(255, 0, 60, 0.1);
+  }
+  50% {
+    border-color: #FF003C;
+    box-shadow: 0 0 35px rgba(255, 0, 60, 0.8), 0 0 65px rgba(255, 0, 60, 0.45), inset 0 0 22px rgba(255, 0, 60, 0.25);
+  }
+}
+.terminal-neon-pulse {
+  border: 1px solid #FF003C;
+  animation: border-pulse-red 2s infinite ease-in-out;
+}
+</style><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="web_blank" name="shell-type"><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&amp;display=swap" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{margin:0;padding:0;width:100vw;height:100vh;overflow:hidden;background-color:#050505;}body{overscroll-behavior:none;user-select:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { colors: { "surface-container-highest": "#353534", "on-secondary-fixed-variant": "#00530e", "error": "#ffb4ab", "on-primary-fixed": "#410008", "on-surface-variant": "#e9bcba", "on-surface": "#e5e2e1", "primary-fixed": "#ffdad8", "on-background": "#e5e2e1", "on-secondary": "#003907", "inverse-on-surface": "#313030", "primary": "#ffb3b2", "on-tertiary-fixed": "#002020", "on-tertiary": "#003738", "tertiary-fixed-dim": "#6cd7d8", "text-primary": "#FFFFFF", "on-secondary-container": "#007117", "surface-container-low": "#1c1b1b", "outline-variant": "#5f3e3e", "surface-bright": "#3a3939", "tertiary-container": "#2aa0a2", "surface-container-high": "#2a2a2a", "on-tertiary-fixed-variant": "#004f51", "secondary-fixed": "#72ff70", "outline": "#af8786", "secondary-fixed-dim": "#00e639", "on-secondary-fixed": "#002203", "on-error": "#690005", "inverse-primary": "#bf002a", "surface-variant": "#353534", "on-primary-container": "#5b000f", "secondary-container": "#13ff43", "on-error-container": "#ffdad6", "surface": "#050505", "tertiary": "#6cd7d8", "surface-container-lowest": "#0e0e0e", "primary-container": "#ff525c", "primary-fixed-dim": "#ffb3b2", "text-secondary": "#8F8F8F", "error-container": "#93000a", "surface-dim": "#131313", "surface-tint": "#ffb3b2", "on-primary-fixed-variant": "#92001e", "warning": "#FF003C", "on-tertiary-container": "#002f30", "background": "#131313", "background-overlay": "rgba(10, 10, 10, 0.85)", "tertiary-fixed": "#8af3f5", "border-alert": "#FF003C", "surface-container": "#201f1f", "inverse-surface": "#e5e2e1", "on-primary": "#680012", "secondary": "#ecffe3" }, borderRadius: { DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px" }, spacing: { "space-xs": "4px", "2xl": "48px", "3xl": "64px", "space-lg": "24px", "margin-desktop": "32px", "xs": "4px", "sm": "8px", "gutter-desktop": "24px", "margin": "16px", "space-md": "16px", "lg": "24px", "space-sm": "8px", "gutter": "16px", "space-xl": "32px", "md": "16px", "xl": "32px" }, fontFamily: { "headline-xl-mobile": ["JetBrains Mono"], "label-sm": ["JetBrains Mono"], "headline-lg": ["JetBrains Mono"], "body-sm": ["JetBrains Mono"], "body-md": ["'JetBrains Mono', monospace"], "headline-xl": ["JetBrains Mono"], "code-sm": ["'JetBrains Mono', monospace"], "body-lg": ["JetBrains Mono"], "h2": ["'JetBrains Mono', monospace"], "label-md": ["JetBrains Mono"], "headline-md": ["JetBrains Mono"], "h1": ["'JetBrains Mono', 'Fira Code', monospace"] }, fontSize: { "headline-xl-mobile": ["32px", { lineHeight: "38px", letterSpacing: "0.05em", fontWeight: "700" }], "label-sm": ["11px", { lineHeight: "14px", letterSpacing: "0.1em", fontWeight: "600" }], "headline-lg": ["24px", { lineHeight: "30px", letterSpacing: "0.02em", fontWeight: "600" }], "body-sm": ["12px", { lineHeight: "16px", fontWeight: "400" }], "body-md": ["1rem", { lineHeight: "1.5", fontWeight: "400" }], "headline-xl": ["48px", { lineHeight: "52px", letterSpacing: "0.05em", fontWeight: "700" }], "code-sm": ["0.75rem", { lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "400" }], "body-lg": ["16px", { lineHeight: "24px", fontWeight: "400" }], "h2": ["1.5rem", { lineHeight: "1.2", fontWeight: "600" }], "label-md": ["14px", { lineHeight: "18px", letterSpacing: "0.08em", fontWeight: "700" }], "headline-md": ["20px", { lineHeight: "26px", fontWeight: "600" }], "h1": ["3rem", { lineHeight: "1.1", letterSpacing: "0.05em", fontWeight: "700" }] } } } };</script><style class="">
+@keyframes emergency-strobe {
+  0%, 100% {
+    color: #FF003C;
+    text-shadow: 0 0 10px #FF003C, 0 0 25px #FF003C, 0 0 50px rgba(255, 0, 60, 0.9), 0 0 80px rgba(255, 0, 60, 0.5);
+    opacity: 1;
+  }
+  50% {
+    color: #ffb3b2;
+    text-shadow: 0 0 4px #FF003C, 0 0 12px rgba(255, 0, 60, 0.6);
+    opacity: 0.92;
+  }
+  52% {
+    opacity: 0.4;
+    text-shadow: none;
+  }
+  54% {
+    opacity: 1;
+    text-shadow: 0 0 20px #FF003C, 0 0 45px #FF003C;
+  }
+  80% {
+    color: #FF003C;
+    text-shadow: 0 0 15px #FF003C, 0 0 35px #FF003C, 0 0 65px rgba(255, 0, 60, 0.85);
+  }
+  82% {
+    opacity: 0.6;
+    transform: skewX(-1.5deg);
+  }
+  84% {
+    opacity: 1;
+    transform: skewX(0deg);
+  }
+}
+
+@keyframes glitch-slice-1 {
+  0%, 100% { clip-path: inset(0 0 0 0); transform: translate(0, 0); }
+  10% { clip-path: inset(15% 0 60% 0); transform: translate(-3px, 1px); }
+  20% { clip-path: inset(45% 0 30% 0); transform: translate(2px, -1px); }
+  30% { clip-path: inset(70% 0 10% 0); transform: translate(-2px, 0); }
+  40% { clip-path: inset(10% 0 75% 0); transform: translate(3px, 1px); }
+  55% { clip-path: inset(60% 0 20% 0); transform: translate(-1px, -1px); }
+  70% { clip-path: inset(30% 0 50% 0); transform: translate(2px, 1px); }
+  85% { clip-path: inset(80% 0 5% 0); transform: translate(-3px, 0); }
+}
+
+@keyframes glitch-slice-2 {
+  0%, 100% { clip-path: inset(0 0 0 0); transform: translate(0, 0); }
+  12% { clip-path: inset(50% 0 25% 0); transform: translate(3px, -1px); }
+  24% { clip-path: inset(20% 0 65% 0); transform: translate(-2px, 1px); }
+  36% { clip-path: inset(80% 0 5% 0); transform: translate(2px, 0); }
+  48% { clip-path: inset(5% 0 80% 0); transform: translate(-3px, -1px); }
+  65% { clip-path: inset(35% 0 45% 0); transform: translate(1px, 1px); }
+  82% { clip-path: inset(65% 0 15% 0); transform: translate(-2px, -1px); }
+}
+
+.glitch-alarm {
+  position: relative;
+  animation: emergency-strobe 1.6s infinite ease-in-out;
+}
+
+.glitch-alarm::before,
+.glitch-alarm::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.glitch-alarm::before {
+  color: #6cd7d8;
+  text-shadow: -2px 0 #00e639;
+  animation: glitch-slice-1 2.2s infinite steps(2, start);
+  opacity: 0.75;
+}
+
+.glitch-alarm::after {
+  color: #FF003C;
+  text-shadow: 2px 0 #ffffff;
+  animation: glitch-slice-2 1.8s infinite steps(2, start);
+  opacity: 0.85;
+}
+</style></head><body class="bg-surface text-on-surface font-body-sm text-body-sm relative w-screen h-screen overflow-hidden"><div class="fixed inset-0 pointer-events-none z-40 overflow-hidden"><div class="absolute inset-0 crt-scanlines opacity-90"></div><div class="crt-scan-beam"></div></div><div class="absolute inset-0 z-0 bg-background-overlay backdrop-blur-[20px] pointer-events-none"></div><div class="relative z-10 flex flex-col w-full h-full"><header class="w-full h-10 border-b border-warning/40 bg-surface/90 flex items-center justify-between px-margin-desktop py-xs select-none"><div class="flex items-center gap-space-md text-label-sm font-label-sm tracking-widest"><span class="flex items-center gap-space-xs text-secondary-fixed-dim"><span class="inline-block w-2 h-2 bg-secondary-fixed-dim shadow-[0_0_8px_#00e639]"></span>[SYS_ID: SNOOP-TRAP-V1.1]</span><span class="text-text-secondary">[AUDIO_OVERRIDE: MAX_VOL_100%]</span><span class="text-text-secondary">[WASAPI: INTERNAL_SPKR]</span></div><div class="flex items-center gap-space-md text-label-sm font-label-sm tracking-widest"><span class="flex items-center gap-space-xs text-secondary-fixed-dim"><span class="inline-block w-2 h-2 bg-secondary-fixed-dim shadow-[0_0_8px_#00e639]"></span>[WEBCAM_CAPTURE: TRANSMITTED]</span><span class="text-secondary-fixed-dim">[TG_BOT_SYNC: CONNECTED]</span><span class="flex items-center gap-space-xs text-warning animate-pulse"><span class="inline-block w-2 h-2 bg-warning shadow-[0_0_8px_#FF003C]"></span>[STATE: ARMED_BREACH]</span></div></header><main class="flex-1 w-full overflow-hidden p-margin-desktop flex items-center justify-center"><div class="flex flex-col w-full h-full justify-between items-center select-none overflow-hidden relative">
+<!-- HUD STATUS MATRIX (Secondary Context Sub-bar) -->
+<div class="w-full bg-surface-container-lowest/90 px-margin-desktop py-space-xs flex flex-wrap items-center justify-between text-code-sm font-code-sm text-text-secondary shadow-sm">
+<div class="flex items-center gap-space-md">
+<span class="flex items-center gap-space-xs text-secondary-fixed-dim">
+<span class="w-1.5 h-1.5 bg-secondary-fixed-dim shadow-[0_0_6px_#00e639]"></span>
+        INPUT_HOOK: WH_KEYBOARD_LL_ACTIVE
+      </span>
+<span class="text-surface-container-highest">|</span>
+<span class="text-text-secondary">ALT+TAB: SUPPRESSED</span>
+<span class="text-surface-container-highest">|</span>
+<span class="text-text-secondary">WIN_KEY: HARD_LOCKED</span>
+</div>
+<div class="flex items-center gap-space-md">
+<span class="flex items-center gap-space-xs text-warning">
+<span class="w-1.5 h-1.5 bg-warning animate-ping"></span>
+        WASAPI: MAX_DECIBEL_LATCHED
+      </span>
+<span class="text-surface-container-highest">|</span>
+<span class="text-secondary-fixed-dim">SEC_ENCLAVE: TP_CHIP_ARMED</span>
+<span class="text-surface-container-highest">|</span>
+<span class="text-warning">[FAIL_SAFE: NUCLEAR_ENGAGED]</span>
+</div>
+</div>
+<!-- CENTRAL INTRUDER TRAP TERMINAL PANEL -->
+<div class="w-full max-w-[760px] my-auto bg-surface relative shadow-[0_0_35px_rgba(255,0,60,0.3)] terminal-neon-pulse" style="box-shadow: rgba(255, 0, 60, 0.25) 0px 0px 30px;">
+<!-- Outer perimeter accents (CSS simulated cut markers) -->
+<div class="absolute -top-1 -left-1 w-3 h-3 bg-warning"></div>
+<div class="absolute -top-1 -right-1 w-3 h-3 bg-warning"></div>
+<div class="absolute -bottom-1 -left-1 w-3 h-3 bg-warning"></div>
+<div class="absolute -bottom-1 -right-1 w-3 h-3 bg-warning"></div>
+<!-- Panel Header Bar -->
+<div class="bg-warning text-surface px-space-md py-space-xs flex items-center justify-between font-label-md text-label-md font-bold tracking-widest">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-base">emergency_home</span>
+<span class="">DEFENSIVE QUARANTINE PROTOCOL • LEVEL: CRITICAL</span>
+</div>
+<div class="flex items-center gap-space-xs bg-surface text-warning px-2 py-0.5 text-label-sm font-label-sm">
+<span class="w-2 h-2 bg-warning animate-pulse"></span>
+        SIREN_OVERRIDE: ACTIVE
+      </div>
+</div>
+<!-- Panel Body Area -->
+<div class="p-space-xl flex flex-col gap-space-lg bg-surface">
+<!-- Critical Alert Header Block -->
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center justify-between text-label-sm font-label-sm text-warning tracking-widest">
+<span class="">// SNOOP_TRAP_EVENT_ID: #TRP-8891-B</span>
+<span class="text-text-secondary">TIMESTAMP: <span class="text-on-surface" id="clock-tick">21:42:29.326</span></span>
+</div>
+<h1 class="text-headline-lg font-headline-lg text-warning tracking-wider uppercase font-bold glitch-alarm select-none" data-text="UNAUTHORIZED ACCESS DETECTED">UNAUTHORIZED ACCESS DETECTED</h1>
+<div class="bg-surface-container-low p-space-sm text-code-sm font-code-sm text-text-primary flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-warning text-sm">gpp_maybe</span>
+<span class="">SYSTEM UNDER TOTAL LOCKDOWN. Facial vector telemetry dispatched to Administrator Telegram 2FA node.</span>
+</div>
+</div>
+<!-- Midsection: Dual Evidence Frame & Telemetry Snapshot -->
+<div class="grid grid-cols-12 gap-space-md">
+<!-- Viewfinder Snapshot Visual -->
+<div class="col-span-5 bg-surface-container-lowest p-space-sm flex flex-col justify-between relative group">
+<div class="flex items-center justify-between text-code-sm font-code-sm text-warning">
+<span class="flex items-center gap-1">
+<span class="w-1.5 h-1.5 bg-warning animate-pulse"></span>
+              REC: LIVE_FEED
+            </span>
+<span class="text-secondary-fixed-dim">[SYNCD]</span>
+</div>
+<!-- Synthetic Wireframe Viewfinder -->
+<div class="relative w-full h-36 bg-surface-container-low my-space-xs flex items-center justify-center overflow-hidden">
+<!-- Grid Lines Background SVG -->
+<svg class="absolute inset-0 w-full h-full opacity-20 text-warning" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<pattern height="16" id="grid-pattern" patternUnits="userSpaceOnUse" width="16">
+<path d="M 16 0 L 0 0 0 16" fill="none" stroke="currentColor" stroke-width="0.5"></path>
+</pattern>
+</defs>
+<rect fill="url(#grid-pattern)" height="100%" width="100%"></rect>
+</svg>
+<!-- Face Wireframe Reticle -->
+<div class="relative z-10 w-24 h-28 flex flex-col items-center justify-center p-2 bg-warning/5">
+<div class="w-12 h-14 bg-surface-container-highest flex items-center justify-center mb-1">
+<span class="material-symbols-outlined text-warning text-3xl opacity-80">person</span>
+</div>
+<span class="text-label-sm font-label-sm text-warning font-bold tracking-tighter">MATCH: UNKNOWN</span>
+<span class="text-code-sm font-code-sm text-secondary-fixed-dim text-[9px] leading-tight">CONF: 99.84%</span>
+</div>
+<!-- Optical Corner Brackets -->
+<div class="absolute top-2 left-2 w-3 h-3 bg-warning"></div>
+<div class="absolute top-2 right-2 w-3 h-3 bg-warning"></div>
+<div class="absolute bottom-2 left-2 w-3 h-3 bg-warning"></div>
+<div class="absolute bottom-2 right-2 w-3 h-3 bg-warning"></div>
+<!-- Scanning Laser Line -->
+<div class="absolute inset-x-0 h-0.5 bg-warning shadow-[0_0_8px_#FF003C] animate-[bounce_2s_infinite]"></div>
+</div>
+<div class="flex items-center justify-between text-code-sm font-code-sm text-text-secondary">
+<span class="">RES: 1080P_RAW</span>
+<span class="text-secondary-fixed-dim">DISPATCH_OK</span>
+</div>
+</div>
+<!-- Metric Target Details -->
+<div class="col-span-7 bg-surface-container-lowest p-space-md flex flex-col justify-between text-code-sm font-code-sm">
+<div class="flex flex-col gap-space-xs">
+<div class="text-label-sm font-label-sm text-text-primary tracking-wider uppercase flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-secondary-fixed-dim text-sm">verified_user</span>
+              TELEMETRY_FORENSICS_PAYLOAD
+            </div>
+<div class="space-y-1 text-text-secondary pt-1">
+<div class="flex justify-between">
+<span class="">INTRUSION_VECTOR:</span>
+<span class="text-warning">PHYSICAL_HUMAN_INPUT</span>
+</div>
+<div class="flex justify-between">
+<span class="">DEVICE_MOTION:</span>
+<span class="text-on-surface">DELTA_X: +42px, DELTA_Y: -12px</span>
+</div>
+<div class="flex justify-between">
+<span class="">AUDIO_BLAST_RMS:</span>
+<span class="text-warning">+6.0 dBFS (OVERDRIVE)</span>
+</div>
+<div class="flex justify-between">
+<span class="">HOST_QUARANTINE:</span>
+<span class="text-secondary-fixed-dim">KBD_LOCKED / DISK_RO</span>
+</div>
+<div class="flex justify-between">
+<span class="">SEC_NOTIFICATION:</span>
+<span class="text-secondary-fixed-dim">TG_BOT [P_CHAT_ID: #81912]</span>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-low p-space-xs text-text-secondary text-[10px] leading-tight flex items-start gap-1">
+<span class="material-symbols-outlined text-warning text-xs mt-0.5">warning</span>
+<span class="">WARNING: System kill, reboot attempt, or power-cord severance triggers local BitLocker key purge.</span>
+</div>
+</div>
+</div>
+<!-- 6-DIGIT TELEGRAM OTP SECTION -->
+<div class="bg-surface-container-lowest p-space-md flex flex-col items-center gap-space-md">
+<div class="flex flex-col items-center gap-1 text-center">
+<div class="text-label-md font-label-md text-text-primary tracking-widest flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-warning text-base">pin</span>
+            ENTER 6-DIGIT TELEGRAM 2FA DISARM CODE
+          </div>
+<div class="text-code-sm font-code-sm text-text-secondary">
+            A dynamic one-time cryptographic authorization cipher was transmitted via secure bot.
+          </div>
+</div>
+<!-- 6 OTP Input Boxes -->
+<div class="flex items-center gap-space-sm" id="otp-container">
+<input autocomplete="off" autofocus="" class="otp-cell w-12 h-14 bg-surface text-center font-headline-lg text-headline-lg text-warning outline-none shadow-[0_0_8px_rgba(255,0,60,0.2)] focus:bg-surface-container-high transition-all" data-idx="0" maxlength="1" placeholder="•" type="text" value="">
+<input autocomplete="off" class="otp-cell w-12 h-14 bg-surface text-center font-headline-lg text-headline-lg text-warning outline-none shadow-[0_0_8px_rgba(255,0,60,0.2)] focus:bg-surface-container-high transition-all" data-idx="1" maxlength="1" placeholder="•" type="text" value="">
+<input autocomplete="off" class="otp-cell w-12 h-14 bg-surface text-center font-headline-lg text-headline-lg text-warning outline-none shadow-[0_0_8px_rgba(255,0,60,0.2)] focus:bg-surface-container-high transition-all" data-idx="2" maxlength="1" placeholder="•" type="text" value="">
+<div class="w-2 h-0.5 bg-warning"></div>
+<input autocomplete="off" class="otp-cell w-12 h-14 bg-surface text-center font-headline-lg text-headline-lg text-warning outline-none shadow-[0_0_8px_rgba(255,0,60,0.2)] focus:bg-surface-container-high transition-all" data-idx="3" maxlength="1" placeholder="•" type="text" value="">
+<input autocomplete="off" class="otp-cell w-12 h-14 bg-surface text-center font-headline-lg text-headline-lg text-warning outline-none shadow-[0_0_8px_rgba(255,0,60,0.2)] focus:bg-surface-container-high transition-all" data-idx="4" maxlength="1" placeholder="•" type="text" value="">
+<input autocomplete="off" class="otp-cell w-12 h-14 bg-surface text-center font-headline-lg text-headline-lg text-warning outline-none shadow-[0_0_8px_rgba(255,0,60,0.2)] focus:bg-surface-container-high transition-all" data-idx="5" maxlength="1" placeholder="•" type="text" value="">
+</div>
+<!-- Action Row -->
+<div class="flex items-center gap-space-md w-full max-w-md">
+<button class="flex-1 py-space-sm px-space-md bg-warning text-surface font-label-md text-label-md font-bold tracking-widest hover:bg-surface hover:text-warning transition-all shadow-[0_0_15px_rgba(255,0,60,0.4)] flex items-center justify-center gap-space-sm" id="unlock-btn">
+<span class="material-symbols-outlined text-base">lock_open</span>
+            &gt; INITIATE_UNLOCK
+          </button>
+<button class="py-space-sm px-space-md bg-surface-container-high text-text-secondary hover:text-on-surface font-label-sm text-label-sm tracking-wider uppercase transition-all" id="resend-btn">
+            RESEND_OTP
+          </button>
+</div>
+<!-- Auxiliary Counter & Threat Warning -->
+<div class="flex items-center justify-between w-full text-code-sm font-code-sm text-text-secondary pt-1">
+<span class="flex items-center gap-1 text-warning">
+<span class="material-symbols-outlined text-xs">shield_with_heart</span>
+            ATTEMPTS REMAINING: <span class="font-bold text-warning" id="attempts-count">03</span> / 03
+          </span>
+<span class="text-text-secondary text-right">
+            FAIL PROTOCOL: IMMEDIATE KERNEL_PANIC_WIPE
+          </span>
+</div>
+</div>
+</div>
+<!-- Panel Footer Status Strip -->
+<div class="bg-surface-container-lowest px-space-md py-space-xs flex items-center justify-between text-code-sm font-code-sm text-text-secondary">
+<span class="flex items-center gap-space-xs">
+<span class="w-1.5 h-1.5 bg-secondary-fixed-dim"></span>
+        TELEGRAM_GATEWAY: 149.154.167.220:443 [TLSv1.3 ESTABLISHED]
+      </span>
+<span class="text-warning">LOCKBOX_PROCESS_HASH: 0x8F94D41A</span>
+</div>
+</div>
+<!-- REAL-TIME HACKER TERMINAL CONSOLE -->
+<div class="w-full bg-surface-container-lowest/95 shadow-md flex flex-col font-code-sm text-code-sm select-text">
+<!-- Terminal Titlebar -->
+<div class="bg-surface-container px-margin-desktop py-1 flex items-center justify-between text-label-sm font-label-sm text-text-secondary">
+<div class="flex items-center gap-space-sm">
+<span class="w-2 h-2 bg-secondary-fixed-dim"></span>
+<span class="text-on-surface font-bold tracking-wider">SNOOPTRAP KERNEL EVENT STREAM (WIN32_WASAPI_HOOK)</span>
+</div>
+<div class="flex items-center gap-space-md text-[10px]">
+<span class="text-secondary-fixed-dim">FEED: LIVE_STDOUT</span>
+<span class="">STREAM_RATE: 120HZ</span>
+</div>
+</div>
+<!-- Terminal Content Area -->
+<div class="h-28 overflow-y-auto px-margin-desktop py-space-xs font-code-sm text-code-sm flex flex-col gap-0.5 text-secondary-fixed-dim bg-surface" id="terminal-stream">
+<div class="flex items-baseline gap-space-sm leading-tight">
+<span class="text-text-secondary">[14:22:01.104]</span>
+<span class="text-warning">[WIN32]</span>
+<span class="text-on-surface">System idle timer threshold reached (&gt;180s). Sentinel state transitioned to ARMED_ACTIVE.</span>
+</div>
+<div class="flex items-baseline gap-space-sm leading-tight">
+<span class="text-text-secondary">[14:25:12.890]</span>
+<span class="text-warning">[SENSOR]</span>
+<span class="text-secondary-fixed-dim">Hardware raw input pulse trapped: MOUSE_MOVE (DeltaX: +42, DeltaY: -12). Breach detected.</span>
+</div>
+<div class="flex items-baseline gap-space-sm leading-tight">
+<span class="text-text-secondary">[14:25:12.912]</span>
+<span class="text-warning">[SECURITY]</span>
+<span class="text-text-primary">Global keyboard hook injected: WH_KEYBOARD_LL active. Alt+Tab, Taskmgr, WinKey suppressed.</span>
+</div>
+<div class="flex items-baseline gap-space-sm leading-tight">
+<span class="text-text-secondary">[14:25:12.935]</span>
+<span class="text-secondary-fixed-dim">[CAMERA]</span>
+<span class="text-secondary-fixed-dim">MediaDevices DirectShow frame captured silently: 1920x1080 JPEG Base64 (CRC32: 0x4B3A821E).</span>
+</div>
+<div class="flex items-baseline gap-space-sm leading-tight">
+<span class="text-text-secondary">[14:25:13.120]</span>
+<span class="text-warning">[WASAPI]</span>
+<span class="text-warning font-bold">Audio endpoint GUID {2a10-realtek} forced UNMUTE. Master Volume pinned to 100%. Siren blast running.</span>
+</div>
+<div class="flex items-baseline gap-space-sm leading-tight">
+<span class="text-text-secondary">[14:25:13.445]</span>
+<span class="text-secondary-fixed-dim">[TELEGRAM]</span>
+<span class="text-secondary-fixed-dim">Multipart POST to api.telegram.org/bot&lt;TOKEN&gt;/sendPhoto: HTTP 200 OK (Message ID: 94812).</span>
+</div>
+<div class="flex items-baseline gap-space-sm leading-tight">
+<span class="text-text-secondary">[14:25:13.448]</span>
+<span class="text-text-secondary">[AUTH]</span>
+<span class="text-on-surface">Awaiting valid 6-digit cryptographic OTP response... [3 ATTEMPTS ALLOWED]</span>
+</div>
+</div>
+</div>
+</div>
+<script>
+  (function() {
+    // Dynamic Timestamp Micro-tick
+    const clock = document.getElementById('clock-tick');
+    if (clock) {
+      setInterval(() => {
+        const now = new Date();
+        const ms = String(now.getMilliseconds()).padStart(3, '0');
+        const timeStr = now.toTimeString().split(' ')[0] + '.' + ms;
+        clock.textContent = timeStr;
+      }, 93);
+    }
+
+    // OTP Interactive Input Navigation
+    const cells = document.querySelectorAll('.otp-cell');
+    cells.forEach((cell, index) => {
+      cell.addEventListener('input', (e) => {
+        const val = e.target.value.replace(/[^0-9]/g, '');
+        e.target.value = val;
+        if (val && index < cells.length - 1) {
+          cells[index + 1].focus();
+        }
+      });
+
+      cell.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !e.target.value && index > 0) {
+          cells[index - 1].focus();
+        }
+      });
+    });
+
+    // Simulated terminal event append on unlock trial
+    const unlockBtn = document.getElementById('unlock-btn');
+    const termStream = document.getElementById('terminal-stream');
+    const attemptsEl = document.getElementById('attempts-count');
+    let attemptsLeft = 3;
+
+    if (unlockBtn && termStream) {
+      unlockBtn.addEventListener('click', () => {
+        let code = Array.from(cells).map(c => c.value).join('');
+        const now = new Date();
+        const timeStr = '[' + now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0') + ']';
+
+        if (code.length < 6) {
+          appendLog(timeStr, '[AUTH_ERR]', 'INVALID_LENGTH: 6 numeric characters required.', 'text-warning');
+          return;
+        }
+
+        if (code === '773901') {
+          appendLog(timeStr, '[AUTH_OK]', 'CRYPTOGRAPHIC_TOKEN_ACCEPTED. Disarming defensive hooks...', 'text-secondary-fixed-dim');
+          appendLog(timeStr, '[WASAPI]', 'Audio siren override muted. Restoring normal session.', 'text-secondary-fixed-dim');
+          alert('ACCESS GRANTED. Defensive lockbox disarmed.');
+        } else {
+          attemptsLeft--;
+          if (attemptsEl) attemptsEl.textContent = '0' + Math.max(0, attemptsLeft);
+          
+          appendLog(timeStr, '[AUTH_FAIL]', 'REJECTED: Code [' + code + '] signature invalid. Attempt logged to Telegram.', 'text-warning');
+          
+          cells.forEach(c => {
+            c.value = '';
+            c.classList.add('bg-warning/20');
+            setTimeout(() => c.classList.remove('bg-warning/20'), 400);
+          });
+          if (cells[0]) cells[0].focus();
+
+          if (attemptsLeft <= 0) {
+            appendLog(timeStr, '[KERNEL_PANIC]', 'CRITICAL: MAXIMUM ATTEMPTS EXCEEDED. ENGAGING LOCAL BITLOCKER PURGE.', 'text-warning font-bold');
+            unlockBtn.disabled = true;
+            unlockBtn.textContent = 'SYSTEM_PURGING';
+          }
+        }
+      });
+    }
+
+    function appendLog(time, tag, text, styleClass) {
+      const line = document.createElement('div');
+      line.className = 'flex items-baseline gap-space-sm leading-tight';
+      line.innerHTML = `<span class="text-text-secondary">${time}</span><span class="${styleClass}">${tag}</span><span class="${styleClass}">${text}</span>`;
+      termStream.appendChild(line);
+      termStream.scrollTop = termStream.scrollHeight;
+    }
+  })();
+</script></main><footer class="w-full h-8 border-t border-warning/30 bg-surface/95 flex items-center justify-between px-margin-desktop text-code-sm font-code-sm text-text-secondary select-none"><div class="">TERMINAL LOCKDOWN ACTIVATED • SECURE_TOKEN_REQUIRED</div><div class="text-warning font-label-sm text-label-sm tracking-widest">PHYSICAL_KEY_RESTRICTED // PORT_BLOCK_ENGAGED</div></footer></div>
+
+</body></html>
