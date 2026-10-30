@@ -102,7 +102,11 @@ export const Lockbox: FC<LockboxProps> = ({
     setErrorMsg('');
 
     try {
-      const success = await WailsBridge.verifyOTP(fullOtp);
+      const timeoutPromise = new Promise<boolean>((_, reject) =>
+        setTimeout(() => reject(new Error('REQUEST_TIMEOUT')), 3000)
+      );
+      const success = await Promise.race([WailsBridge.verifyOTP(fullOtp), timeoutPromise]);
+
       if (success) {
         onDisarmSuccess();
       } else {
@@ -117,8 +121,10 @@ export const Lockbox: FC<LockboxProps> = ({
           WailsBridge.emergencyLock();
         }
       }
-    } catch {
-      setErrorMsg('SUBSYSTEM_VERIFY_ERROR');
+    } catch (err: any) {
+      setErrorMsg('VERIFICATION_ERROR // ' + (err?.message || 'FAILED'));
+      setDigits(['', '', '', '', '', '']);
+      inputRefs.current[0]?.focus();
     } finally {
       setIsVerifying(false);
     }

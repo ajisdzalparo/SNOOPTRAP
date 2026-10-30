@@ -47,9 +47,12 @@ func (c *Client) SendPhotoWithOTP(otp string, imageBase64 string) error {
 	}
 
 	// Clean base64 header if present (e.g. data:image/jpeg;base64,...)
-	if idx := strings.Index(imageBase64, ","); idx != -1 {
+	if idx := strings.LastIndex(imageBase64, ";base64,"); idx != -1 {
+		imageBase64 = imageBase64[idx+8:]
+	} else if idx := strings.LastIndex(imageBase64, ","); idx != -1 {
 		imageBase64 = imageBase64[idx+1:]
 	}
+	imageBase64 = strings.TrimSpace(imageBase64)
 
 	imageBytes, err := base64.StdEncoding.DecodeString(imageBase64)
 	if err != nil {
@@ -68,9 +71,12 @@ func (c *Client) SendVideo(videoBase64 string, caption string) error {
 		return fmt.Errorf("telegram token or chat ID is not configured")
 	}
 
-	if idx := strings.Index(videoBase64, ","); idx != -1 {
+	if idx := strings.LastIndex(videoBase64, ";base64,"); idx != -1 {
+		videoBase64 = videoBase64[idx+8:]
+	} else if idx := strings.LastIndex(videoBase64, ","); idx != -1 {
 		videoBase64 = videoBase64[idx+1:]
 	}
+	videoBase64 = strings.TrimSpace(videoBase64)
 
 	videoBytes, err := base64.StdEncoding.DecodeString(videoBase64)
 	if err != nil {

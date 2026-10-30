@@ -499,26 +499,26 @@ func (a *App) TestTrap() {
 // beforeClose is called when the user attempts to close the window
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 	a.mu.RLock()
-	isTriggered := (a.status == "TRIGGERED")
+	st := a.status
 	quitting := a.isQuitting
 	a.mu.RUnlock()
 
 	// If system is in Lockdown (TRIGGERED), block closing the window completely!
-	if isTriggered {
+	if st == "TRIGGERED" {
 		a.addLog("[SECURITY] Close window attempt blocked. SnoopTrap is in Lockdown!")
 		return true // Prevent close!
 	}
 
-	// If explicit quit requested from Tray menu, allow exit
-	if quitting {
+	// In DISARMED mode or explicit quit requested, allow normal exit and clean up tray
+	if quitting || st == "DISARMED" {
 		tray.RemoveTray()
-		return false
+		return false // Allow normal close
 	}
 
-	// Normal close ('X'): Hide window to System Tray (Show hidden icons)
+	// In ARMED mode: Hide window to System Tray
 	wailsRuntime.WindowHide(a.ctx)
 	a.addLog("[SYSTEM] Window minimized to background/tray. SnoopTrap guardian active.")
-	return true // Prevent process exit so it continues running in background
+	return true // Prevent process exit so it continues guarding in background
 }
 
 // EmergencyLock triggers Windows Lock Screen immediately
