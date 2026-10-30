@@ -40,7 +40,7 @@ export const Dashboard: FC<DashboardProps> = ({ onTriggerTrap, logs }) => {
     hasOtp: false,
   });
 
-  const [activeTab, setActiveTab] = useState<'status' | 'config'>('status');
+  const [activeTab, setActiveTab] = useState<'status' | 'config'>('config');
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
 

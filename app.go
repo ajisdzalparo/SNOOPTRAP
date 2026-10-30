@@ -341,6 +341,19 @@ func (a *App) TestTrap() {
 	a.TriggerTrap()
 }
 
+// beforeClose is called when the user attempts to close the window
+func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	// If system is TRIGGERED or ARMED, prevent closing the window
+	if a.status == "TRIGGERED" {
+		a.addLog("[SECURITY] Close window attempt blocked. SnoopTrap is in Lockdown!")
+		return true // Prevent close!
+	}
+	return false
+}
+
 // EmergencyLock triggers Windows Lock Screen immediately
 func (a *App) EmergencyLock() {
 	a.addLog("[FAILSAFE] Immediate emergency lock workstation invoked.")
