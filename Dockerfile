@@ -13,3 +13,4 @@ COPY --from=builder /app/relay-service .
 EXPOSE 8080
 ENV PORT=8080
 CMD ["./relay-service"]
+
