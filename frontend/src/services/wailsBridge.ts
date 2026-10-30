@@ -178,6 +178,19 @@ export const WailsBridge = {
     }
   },
 
+  async getStreamWebSocketURL(): Promise<string> {
+    if ((window as any).go?.main?.App?.GetStreamWebSocketURL) {
+      return await (window as any).go.main.App.GetStreamWebSocketURL();
+    }
+    return '';
+  },
+
+  async playRemoteVoice(audioBase64: string, mimeType: string): Promise<void> {
+    if ((window as any).go?.main?.App?.PlayRemoteVoice) {
+      await (window as any).go.main.App.PlayRemoteVoice(audioBase64, mimeType);
+    }
+  },
+
   async testServerConnection(host: string, port: string): Promise<{ success: boolean; message: string }> {
     if ((window as any).go?.main?.App?.TestServerConnection) {
       return await (window as any).go.main.App.TestServerConnection(host, port);

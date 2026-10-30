@@ -22,6 +22,8 @@ export function GetStreamRoomID():Promise<string>;
 
 export function GetStreamURL():Promise<string>;
 
+export function GetStreamWebSocketURL():Promise<string>;
+
 export function PlayRemoteVoice(arg1:string,arg2:string):Promise<void>;
 
 export function ProcessIntruderCapture(arg1:string):Promise<boolean>;

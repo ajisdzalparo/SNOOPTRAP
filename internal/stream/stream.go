@@ -6,107 +6,232 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+
+	"github.com/gorilla/websocket"
 )
 
 var (
 	currentRoomID string
 	roomMu        sync.RWMutex
 	serverOnce    sync.Once
+
+	upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+
+	localRooms   = make(map[string]*localRoom)
+	localRoomsMu sync.RWMutex
 )
+
+type localClient struct {
+	conn   *websocket.Conn
+	roomID string
+	isHost bool
+}
+
+type localRoom struct {
+	host    *localClient
+	viewers map[*localClient]bool
+	mu      sync.RWMutex
+}
 
 const viewerHTML = `<!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SnoopTrap // Live Surveillance Feed</title>
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SnoopTrap // Live Surveillance & Intercom</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { background:#050505; color:#fff; font-family:monospace; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:16px; }
-    .card { width:100%; max-width:600px; background:#0a0a0a; border:2px solid #ff003c; border-radius:8px; padding:16px; box-shadow:0 0 25px rgba(255,0,60,0.4); }
-    .header { display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #222; padding-bottom:8px; margin-bottom:12px; font-size:12px; }
-    .dot { width:8px; height:8px; background:#ff003c; border-radius:50%; display:inline-block; animation:ping 1s infinite; }
-    @keyframes ping { 0%{opacity:1;} 50%{opacity:0.3;} 100%{opacity:1;} }
-    video { width:100%; border-radius:4px; background:#000; border:1px solid #222; }
-    .status { margin-top:10px; font-size:11px; color:#888; text-align:center; }
+    body { background:#050505; color:#fff; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:12px; }
+    .card { width:100%; max-width:640px; background:#0a0a0a; border:2px solid #ff003c; border-radius:10px; overflow:hidden; box-shadow:0 0 35px rgba(255,0,60,0.35); }
+    .header { padding:14px 16px; background:#111; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #222; }
+    .brand { display:flex; align-items:center; gap:8px; font-weight:900; letter-spacing:1px; color:#ff003c; font-size:14px; }
+    .dot { width:10px; height:10px; background:#ff003c; border-radius:50%; display:inline-block; animation:pulse 1s infinite; }
+    @keyframes pulse { 0%{opacity:1;transform:scale(1);} 50%{opacity:0.3;transform:scale(0.85);} 100%{opacity:1;transform:scale(1);} }
+    .badge { font-size:11px; font-weight:700; padding:3px 8px; border-radius:4px; background:#1a1a1a; color:#00ff41; border:1px solid #333; }
+    .video-container { position:relative; width:100%; aspect-ratio:4/3; background:#000; display:flex; align-items:center; justify-content:center; }
+    .overlay-text { position:absolute; bottom:12px; left:12px; background:rgba(0,0,0,0.7); padding:4px 8px; font-size:11px; border-radius:4px; border:1px solid #333; }
+    .status-bar { padding:12px 16px; font-size:12px; color:#888; text-align:center; border-top:1px solid #222; background:#0a0a0a; }
+    .controls { padding:12px 16px; display:flex; gap:8px; background:#111; border-top:1px solid #222; }
+    button { flex:1; padding:12px; border:none; border-radius:6px; font-weight:700; font-size:12px; cursor:pointer; text-transform:uppercase; transition:all 0.2s; user-select:none; -webkit-user-select:none; }
+    .btn-audio { background:#ff003c; color:#fff; }
+    .btn-audio:active { transform:scale(0.98); opacity:0.8; }
+    .btn-talk { background:#0055ff; color:#fff; }
+    .btn-talk.talking { background:#00ff41; color:#000; box-shadow:0 0 15px #00ff41; }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="header">
-      <div style="display:flex;align-items:center;gap:6px;"><span class="dot"></span><strong style="color:#ff003c;">SNOOPTRAP LIVE FEED</strong></div>
-      <div id="liveBadge" style="color:#00ff41;">CONNECTING...</div>
+      <div class="brand">
+        <span class="dot"></span>
+        <span>SNOOPTRAP LIVE INTERCOM</span>
+      </div>
+      <div id="liveBadge" class="badge">CONNECTING...</div>
     </div>
-    <video id="liveVideo" autoplay playsinline controls></video>
-    <div class="status" id="statusText">Menghubungkan ke kamera & mic laptop...</div>
+
+    <div class="video-container">
+      <img id="remoteVideo" src="" alt="Live Surveillance Feed" style="width:100%;height:100%;object-fit:cover;display:none;" />
+      <div id="callingPlaceholder" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#888;font-size:12px;gap:8px;">
+        <span class="dot"></span>
+        <span id="placeholderText">Menghubungkan ke live stream laptop...</span>
+      </div>
+      <div class="overlay-text" id="fpsText">CAM: READY</div>
+    </div>
+
+    <div class="status-bar" id="statusText">
+      Menghubungkan ke relay server WebSocket...
+    </div>
+
+    <div class="controls">
+      <button id="btnListen" class="btn-audio" onclick="toggleListen()">🔊 DENGARKAN LAPTOP</button>
+      <button id="btnTalk" class="btn-talk" onmousedown="startTalk()" onmouseup="stopTalk()" ontouchstart="startTalk(event)" ontouchend="stopTalk(event)">🎙️ TAHAN BICARA</button>
+    </div>
   </div>
+
   <script>
     const params = new URLSearchParams(window.location.search);
     const room = params.get('room');
     const statusText = document.getElementById('statusText');
     const liveBadge = document.getElementById('liveBadge');
-    const liveVideo = document.getElementById('liveVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+    const fpsText = document.getElementById('fpsText');
+    const callingPlaceholder = document.getElementById('callingPlaceholder');
+    const placeholderText = document.getElementById('placeholderText');
+
+    let ws = null;
+    let isListening = false;
+    let talkRecorder = null;
+    let talkStream = null;
+
+    function toggleListen() {
+      isListening = !isListening;
+      const btn = document.getElementById('btnListen');
+      if (isListening) {
+        btn.innerText = "🔇 BISUKAN SUARA";
+        btn.style.background = "#222";
+        statusText.innerText = "Mendengarkan suara mikrofon laptop...";
+      } else {
+        btn.innerText = "🔊 DENGARKAN LAPTOP";
+        btn.style.background = "#ff003c";
+        statusText.innerText = "Suara laptop dibisukan.";
+      }
+    }
+
+    async function startTalk(e) {
+      if (e) e.preventDefault();
+      const btn = document.getElementById('btnTalk');
+      btn.classList.add('talking');
+      btn.innerText = "🔴 SEDANG BICARA...";
+      statusText.innerText = "Suara Anda sedang disiarkan ke speaker laptop!";
+
+      try {
+        if (!talkStream) {
+          talkStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+        let mime = 'audio/webm';
+        if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/mp4')) {
+          mime = 'audio/mp4';
+        }
+        talkRecorder = new MediaRecorder(talkStream, { mimeType: mime, audioBitsPerSecond: 64000 });
+        talkRecorder.ondataavailable = (ev) => {
+          if (ev.data && ev.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const b64 = (reader.result).split(',')[1];
+              if (b64) {
+                ws.send(JSON.stringify({ type: 'intercom_speak', data: b64, mime: mime }));
+              }
+            };
+            reader.readAsDataURL(ev.data);
+          }
+        };
+        talkRecorder.start(250);
+      } catch (err) {
+        btn.classList.remove('talking');
+        btn.innerText = "🎙️ TAHAN BICARA";
+        statusText.innerText = "Izinkan akses mic HP untuk berbicara ke laptop.";
+      }
+    }
+
+    function stopTalk(e) {
+      if (e) e.preventDefault();
+      const btn = document.getElementById('btnTalk');
+      btn.classList.remove('talking');
+      btn.innerText = "🎙️ TAHAN BICARA";
+      statusText.innerText = "Pesan suara terkirim.";
+
+      if (talkRecorder && talkRecorder.state === 'recording') {
+        talkRecorder.stop();
+        talkRecorder = null;
+      }
+    }
 
     if (!room) {
-      statusText.innerText = "Error: Room ID tidak ditemukan.";
+      statusText.innerText = "Error: Room ID tidak ditemukan pada tautan ini.";
+      liveBadge.innerText = "ROOM MISSING";
+      liveBadge.style.color = "#ff003c";
     } else {
-      const peer = new Peer({
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' }
-          ]
-        }
-      });
+      let frameCount = 0;
+      let lastFpsTime = Date.now();
 
-      let activeCall = null;
-      function callLaptop() {
-        if (!peer || peer.destroyed) return;
-        statusText.innerText = "Memanggil kamera laptop (" + room + ")...";
-        liveBadge.innerText = "CALLING...";
+      function connectWS() {
+        const loc = window.location;
+        const proto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = proto + '//' + loc.host + '/ws?room=' + encodeURIComponent(room) + '&role=viewer';
 
-        activeCall = peer.call(room, new MediaStream());
-        if (!activeCall) return;
+        statusText.innerText = "Menghubungkan ke Relay WebSocket...";
+        liveBadge.innerText = "CONNECTING...";
 
-        activeCall.on('stream', (stream) => {
-          liveVideo.srcObject = stream;
-          liveVideo.play().catch(()=>{});
-          liveBadge.innerText = "[LIVE 30 FPS]";
-          liveBadge.style.color = "#00ff41";
-          statusText.innerText = "Siaran langsung aktif (Video + Audio)";
-        });
+        ws = new WebSocket(wsUrl);
 
-        activeCall.on('close', () => {
-          liveBadge.innerText = "DISCONNECTED";
+        ws.onopen = () => {
+          placeholderText.innerText = "Relay terhubung. Menunggu feed kamera laptop...";
+          statusText.innerText = "Terhubung ke Relay. Menunggu feed kamera laptop...";
+          liveBadge.innerText = "WAITING FEED";
+          liveBadge.style.color = "#ffbb00";
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'frame' && msg.data) {
+              remoteVideo.style.display = 'block';
+              callingPlaceholder.style.display = 'none';
+              remoteVideo.src = msg.data;
+
+              frameCount++;
+              const now = Date.now();
+              if (now - lastFpsTime >= 1000) {
+                fpsText.innerText = 'FPS: ' + frameCount + ' | LIVE FEED';
+                frameCount = 0;
+                lastFpsTime = now;
+              }
+
+              liveBadge.innerText = "LIVE (ONLINE)";
+              liveBadge.style.color = "#00ff41";
+              statusText.innerText = "Siaran langsung aktif! Kamera laptop sedang menyiarkan secara real-time.";
+            } else if (msg.type === 'audio_out' && isListening && msg.data) {
+              const audioElem = new Audio('data:' + (msg.mime || 'audio/webm') + ';base64,' + msg.data);
+              audioElem.play().catch(()=>{});
+            }
+          } catch (err) {}
+        };
+
+        ws.onerror = (err) => {
+          statusText.innerText = "Relay WebSocket error.";
+        };
+
+        ws.onclose = () => {
+          liveBadge.innerText = "RECONNECTING";
           liveBadge.style.color = "#ff003c";
-          statusText.innerText = "Panggilan live feed selesai / laptop disarm.";
-        });
-
-        activeCall.on('error', (err) => {
-          statusText.innerText = "Koneksi terputus: " + err;
-        });
+          statusText.innerText = "Koneksi terputus. Mencoba ulang dalam 2 detik...";
+          setTimeout(connectWS, 2000);
+        };
       }
 
-      peer.on('open', () => {
-        statusText.innerText = "Memanggil kamera laptop (" + room + ")...";
-        callLaptop();
-      });
-
-      peer.on('error', (err) => {
-        if (err.type === 'peer-unavailable') {
-          statusText.innerText = "Kamera laptop sedang bersiap... Menghubungkan ulang dalam 2 detik.";
-          setTimeout(() => {
-            callLaptop();
-          }, 2500);
-        } else {
-          statusText.innerText = "Status: " + err.type;
-        }
-      });
+      connectWS();
     }
   </script>
 </body>
@@ -156,6 +281,63 @@ func GetLocalIP() string {
 	return "127.0.0.1"
 }
 
+func handleLocalWebSocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	roomID := r.URL.Query().Get("room")
+	role := r.URL.Query().Get("role")
+	if roomID == "" {
+		return
+	}
+
+	localRoomsMu.Lock()
+	room, exists := localRooms[roomID]
+	if !exists {
+		room = &localRoom{viewers: make(map[*localClient]bool)}
+		localRooms[roomID] = room
+	}
+	localRoomsMu.Unlock()
+
+	client := &localClient{conn: conn, roomID: roomID, isHost: role == "host"}
+	room.mu.Lock()
+	if client.isHost {
+		room.host = client
+	} else {
+		room.viewers[client] = true
+	}
+	room.mu.Unlock()
+
+	defer func() {
+		room.mu.Lock()
+		if client.isHost {
+			room.host = nil
+		} else {
+			delete(room.viewers, client)
+		}
+		room.mu.Unlock()
+	}()
+
+	for {
+		msgType, msg, err := conn.ReadMessage()
+		if err != nil {
+			break
+		}
+		room.mu.RLock()
+		if client.isHost {
+			for v := range room.viewers {
+				_ = v.conn.WriteMessage(msgType, msg)
+			}
+		} else if room.host != nil {
+			_ = room.host.conn.WriteMessage(msgType, msg)
+		}
+		room.mu.RUnlock()
+	}
+}
+
 // StartStreamServer starts the local HTTP streaming viewer server on port 8765
 func StartStreamServer() {
 	serverOnce.Do(func() {
@@ -163,6 +345,7 @@ func StartStreamServer() {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			fmt.Fprint(w, viewerHTML)
 		})
+		http.HandleFunc("/ws", handleLocalWebSocket)
 		go func() {
 			_ = http.ListenAndServe("0.0.0.0:8765", nil)
 		}()

@@ -38,6 +38,10 @@ export function GetStreamURL() {
   return window['go']['main']['App']['GetStreamURL']();
 }
 
+export function GetStreamWebSocketURL() {
+  return window['go']['main']['App']['GetStreamWebSocketURL']();
+}
+
 export function PlayRemoteVoice(arg1, arg2) {
   return window['go']['main']['App']['PlayRemoteVoice'](arg1, arg2);
 }

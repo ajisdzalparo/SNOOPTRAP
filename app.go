@@ -752,3 +752,26 @@ func (a *App) GetStreamURL() string {
 	ip := stream.GetLocalIP()
 	return fmt.Sprintf("http://%s:8765/stream?room=%s", ip, room)
 }
+
+// GetStreamWebSocketURL returns the WebSocket relay endpoint for the laptop to publish frames & receive audio
+func (a *App) GetStreamWebSocketURL() string {
+	room := a.GetStreamRoomID()
+	a.mu.RLock()
+	relayURL := ""
+	if a.cfg != nil {
+		if strings.TrimSpace(a.cfg.StreamServerHost) != "" {
+			relayURL = resolveStreamEndpoint(a.cfg.StreamServerHost, a.cfg.StreamServerPort)
+		} else if strings.TrimSpace(a.cfg.StreamRelayServerURL) != "" {
+			relayURL = strings.TrimSpace(a.cfg.StreamRelayServerURL)
+		}
+	}
+	a.mu.RUnlock()
+
+	if relayURL != "" {
+		relayURL = strings.TrimRight(relayURL, "/")
+		wsURL := strings.Replace(strings.Replace(relayURL, "https://", "wss://", 1), "http://", "ws://", 1)
+		return fmt.Sprintf("%s/ws?room=%s&role=host", wsURL, room)
+	}
+
+	return fmt.Sprintf("ws://127.0.0.1:8765/ws?room=%s&role=host", room)
+}

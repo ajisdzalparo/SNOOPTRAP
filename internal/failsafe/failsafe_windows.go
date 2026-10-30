@@ -25,6 +25,8 @@ var (
 	procIsWindowVisible          = user32.NewProc("IsWindowVisible")
 	procGetWindowLongW           = user32.NewProc("GetWindowLongW")
 	procSetWindowLongW           = user32.NewProc("SetWindowLongW")
+	procGetWindowTextW           = user32.NewProc("GetWindowTextW")
+	procGetParent                = user32.NewProc("GetParent")
 	procGetCurrentProcessId      = kernel32.NewProc("GetCurrentProcessId")
 	procGetCurrentThreadId       = kernel32.NewProc("GetCurrentThreadId")
 )
@@ -40,8 +42,17 @@ func GetAppWindowHWND() uintptr {
 		if uintptr(pid) == curPid {
 			vis, _, _ := procIsWindowVisible.Call(hwnd)
 			if vis != 0 {
-				appHwnd = hwnd
-				return 0 // found target window, stop enumeration
+				var buf [256]uint16
+				textLen, _, _ := procGetWindowTextW.Call(hwnd, uintptr(unsafe.Pointer(&buf[0])), 256)
+				title := syscall.UTF16ToString(buf[:textLen])
+				if strings.Contains(title, "SnoopTrap") {
+					appHwnd = hwnd
+					return 0 // found exact SnoopTrap window!
+				}
+				parent, _, _ := procGetParent.Call(hwnd)
+				if parent == 0 && appHwnd == 0 {
+					appHwnd = hwnd
+				}
 			}
 		}
 		return 1 // continue searching
@@ -75,7 +86,7 @@ func ForceFullscreenLockbox() {
 	// 1. Remove title bar and resizing borders (WS_CAPTION | WS_THICKFRAME) so it's a seamless edge-to-edge lock screen
 	// GWL_STYLE = -16
 	oldStyle, _, _ := procGetWindowLongW.Call(hwnd, ^uintptr(15)) // -16
-	newStyle := oldStyle &^ (0x00C00000 | 0x00040000)
+	newStyle := (oldStyle &^ (0x00C00000 | 0x00040000 | 0x00800000)) | 0x80000000 // WS_POPUP
 	procSetWindowLongW.Call(hwnd, ^uintptr(15), newStyle)
 
 	// 2. Attach thread input to current foreground window to bypass Windows focus lock
@@ -91,9 +102,26 @@ func ForceFullscreenLockbox() {
 		}
 	}
 
-	// 3. HWND_TOPMOST (-1) covering 100% of the primary display at (0, 0, cx, cy)
+	// 3. Cover 100% of the virtual screen (multi-monitor or high DPI) or primary screen
+	vx, _, _ := procGetSystemMetrics.Call(76) // SM_XVIRTUALSCREEN
+	vy, _, _ := procGetSystemMetrics.Call(77) // SM_YVIRTUALSCREEN
+	vw, _, _ := procGetSystemMetrics.Call(78) // SM_CXVIRTUALSCREEN
+	vh, _, _ := procGetSystemMetrics.Call(79) // SM_CYVIRTUALSCREEN
+
+	x := uintptr(0)
+	y := uintptr(0)
+	w := cx
+	h := cy
+	if vw > 0 && vh > 0 {
+		x = vx
+		y = vy
+		w = vw
+		h = vh
+	}
+
+	// HWND_TOPMOST (-1) covering 100% of the screen at (x, y, w, h)
 	// SWP_SHOWWINDOW (0x0040) | SWP_FRAMECHANGED (0x0020)
-	procSetWindowPos.Call(hwnd, ^uintptr(0), 0, 0, cx, cy, 0x0040|0x0020)
+	procSetWindowPos.Call(hwnd, ^uintptr(0), x, y, w, h, 0x0040|0x0020)
 	procShowWindow.Call(hwnd, 3) // SW_SHOWMAXIMIZED
 	procBringWindowToTop.Call(hwnd)
 	procSetForegroundWindow.Call(hwnd)

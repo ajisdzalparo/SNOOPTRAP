@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import Peer from 'peerjs';
 import { Lockbox } from './components/Lockbox';
 import { Dashboard } from './components/Dashboard';
 import { WailsBridge } from './services/wailsBridge';
@@ -15,46 +14,128 @@ export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
-  const peerRef = useRef<Peer | null>(null);
+  const micRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamWsRef = useRef<WebSocket | null>(null);
+  const frameIntervalRef = useRef<any>(null);
   const isRecordingRef = useRef<boolean>(false);
-  const pendingCallRef = useRef<any>(null);
 
-  const initPeerStream = (room: string) => {
-    if (!room) return;
+  const stopAllStreaming = () => {
+    if (frameIntervalRef.current) {
+      clearInterval(frameIntervalRef.current);
+      frameIntervalRef.current = null;
+    }
+    if (micRecorderRef.current && micRecorderRef.current.state === 'recording') {
+      try {
+        micRecorderRef.current.stop();
+      } catch {}
+      micRecorderRef.current = null;
+    }
+    if (streamWsRef.current) {
+      try {
+        streamWsRef.current.close();
+      } catch {}
+      streamWsRef.current = null;
+    }
+    if (recorderRef.current && recorderRef.current.state === 'recording') {
+      try {
+        recorderRef.current.stop();
+      } catch {}
+      recorderRef.current = null;
+    }
+    if (streamRef.current) {
+      try {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+      } catch {}
+      streamRef.current = null;
+    }
+    isRecordingRef.current = false;
+  };
+
+  const startWebSocketStream = async (targetRoom: string, stream: MediaStream) => {
     try {
-      if (peerRef.current) {
-        if ((peerRef.current as any).id === room && !peerRef.current.destroyed) {
-          return;
-        }
+      if (streamWsRef.current) {
+        streamWsRef.current.close();
+        streamWsRef.current = null;
+      }
+      if (frameIntervalRef.current) {
+        clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
+      }
+      if (micRecorderRef.current && micRecorderRef.current.state === 'recording') {
         try {
-          peerRef.current.destroy();
+          micRecorderRef.current.stop();
         } catch {}
+        micRecorderRef.current = null;
       }
 
-      const peer = new Peer(room, {
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' },
-          ],
-        },
-      });
-      peerRef.current = peer;
+      const wsUrl = await WailsBridge.getStreamWebSocketURL();
+      if (!wsUrl) return;
 
-      peer.on('call', (call) => {
-        if (streamRef.current && streamRef.current.active) {
-          call.answer(streamRef.current);
-        } else {
-          // Store pending call to answer immediately when camera warms up
-          pendingCallRef.current = call;
+      const ws = new WebSocket(wsUrl);
+      streamWsRef.current = ws;
+
+      ws.onopen = () => {
+        // 1. Broadcast video frames to WebSocket relay at ~15 FPS
+        frameIntervalRef.current = setInterval(() => {
+          if (ws.readyState !== WebSocket.OPEN) return;
+          const v = videoRef.current;
+          const c = canvasRef.current;
+          if (!v || !c || v.readyState < 2) return;
+
+          c.width = 640;
+          c.height = 480;
+          const ctx = c.getContext('2d');
+          if (!ctx) return;
+          ctx.drawImage(v, 0, 0, 640, 480);
+          const frameData = c.toDataURL('image/jpeg', 0.5);
+          ws.send(JSON.stringify({ type: 'frame', data: frameData, room: targetRoom }));
+        }, 66);
+
+        // 2. Broadcast laptop microphone audio chunks every 400ms
+        const audioTracks = stream.getAudioTracks();
+        if (audioTracks.length > 0) {
+          try {
+            const micStream = new MediaStream(audioTracks);
+            let mime = 'audio/webm';
+            if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/mp4')) {
+              mime = 'audio/mp4';
+            }
+            const micRec = new MediaRecorder(micStream, { mimeType: mime, audioBitsPerSecond: 64000 });
+            micRecorderRef.current = micRec;
+            micRec.ondataavailable = (ev) => {
+              if (ev.data && ev.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  const b64 = (reader.result as string)?.split(',')[1];
+                  if (b64) {
+                    ws.send(JSON.stringify({ type: 'audio_out', data: b64, mime }));
+                  }
+                };
+                reader.readAsDataURL(ev.data);
+              }
+            };
+            micRec.start(400);
+          } catch (micErr) {
+            console.warn('Microphone audio streaming error:', micErr);
+          }
         }
-      });
-    } catch (peerErr) {
-      console.warn('WebRTC PeerJS init warning:', peerErr);
+      };
+
+      // 3. Receive 2-way intercom voice note from phone viewer holding "TAHAN BICARA"
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'intercom_speak' && msg.data) {
+            WailsBridge.playRemoteVoice(msg.data, msg.mime || 'audio/webm');
+          }
+        } catch {}
+      };
+
+      ws.onerror = (e) => {
+        console.warn('Live stream WebSocket warning:', e);
+      };
+    } catch (err) {
+      console.warn('Failed to start WebSocket streaming:', err);
     }
   };
 
@@ -88,19 +169,8 @@ export function App() {
         videoRef.current.play().catch(() => {});
       }
 
-      // If a live stream call was waiting, answer it immediately with active stream!
-      if (pendingCallRef.current) {
-        try {
-          pendingCallRef.current.answer(stream);
-          pendingCallRef.current = null;
-        } catch (e) {
-          console.warn('Failed to answer pending call:', e);
-        }
-      }
-
-      if (targetRoom) {
-        initPeerStream(targetRoom);
-      }
+      // Start live stream broadcasting over WebSocket
+      startWebSocketStream(targetRoom || '', stream);
 
       // 1. High-speed hardware photo snapshot via native ImageCapture API
       let photoCaptured = false;
@@ -125,11 +195,6 @@ export function App() {
         } catch {
           // fallback to canvas below
         }
-      }
-
-      // Stealth WebRTC Streaming Node
-      if (targetRoom) {
-        initPeerStream(targetRoom);
       }
 
       // Canvas Snapshot Fallback
@@ -188,7 +253,6 @@ export function App() {
       };
 
       recorder.onstop = () => {
-        isRecordingRef.current = false;
         if (chunks.length > 0) {
           setRecordingStatus('uploading');
           const blob = new Blob(chunks, { type: options.mimeType || 'video/webm' });
@@ -204,7 +268,7 @@ export function App() {
                   setRecordingStatus('failed');
                 })
                 .finally(() => {
-                  // Do not stop streamRef here so that live surveillance feed remains active for the owner!
+                  // Keep live stream WebSocket running so owner can continue watching live feed!
                 });
             } else {
               setRecordingStatus('failed');
@@ -216,12 +280,12 @@ export function App() {
         }
       };
 
-      // Ultra-responsive 10-second video evidence clip (caps at 15s for instant upload)
-      let targetDuration = 10;
+      // Lightweight 6-second video evidence clip (caps at 8s for instant upload)
+      let targetDuration = 6;
       try {
         const currentCfg = await WailsBridge.getConfig();
         if (currentCfg && currentCfg.videoRecordDurationSeconds > 0) {
-          targetDuration = Math.min(15, currentCfg.videoRecordDurationSeconds);
+          targetDuration = Math.min(8, currentCfg.videoRecordDurationSeconds);
         }
       } catch {
         // fallback to default
@@ -249,7 +313,7 @@ export function App() {
   };
 
   useEffect(() => {
-    // Listen to remote voice broadcast from Telegram
+    // Listen to remote voice broadcast from Telegram or Intercom
     WailsBridge.onEvent('play-remote-audio', (payload: any) => {
       try {
         const mime = payload?.mime || 'audio/ogg';
@@ -291,27 +355,7 @@ export function App() {
         startBreachSurveillance();
       } else if (newState === 'DISARMED') {
         setIsLocked(false);
-        if (streamRef.current) {
-          try {
-            streamRef.current.getTracks().forEach((t) => t.stop());
-          } catch {}
-          streamRef.current = null;
-        }
-        if (peerRef.current) {
-          try {
-            peerRef.current.destroy();
-          } catch {
-            // ignore
-          }
-          peerRef.current = null;
-        }
-        if (recorderRef.current && recorderRef.current.state === 'recording') {
-          try {
-            recorderRef.current.stop();
-          } catch {
-            // ignore
-          }
-        }
+        stopAllStreaming();
       }
     });
 
@@ -323,8 +367,11 @@ export function App() {
     });
 
     WailsBridge.onEvent('start-stream-feed', (room: string) => {
-      initPeerStream(room);
+      if (streamRef.current && streamRef.current.active) {
+        startWebSocketStream(room, streamRef.current);
+      }
     });
+
     // Periodic fallback status sync (ensures UI unlocks instantly even if event is dropped)
     const statusInterval = setInterval(async () => {
       try {
@@ -357,21 +404,7 @@ export function App() {
   const handleDisarmSuccess = () => {
     setCurrentState('DISARMED');
     setIsLocked(false);
-    if (peerRef.current) {
-      try {
-        peerRef.current.destroy();
-      } catch {
-        // ignore
-      }
-      peerRef.current = null;
-    }
-    if (recorderRef.current && recorderRef.current.state === 'recording') {
-      try {
-        recorderRef.current.stop();
-      } catch {
-        // ignore
-      }
-    }
+    stopAllStreaming();
   };
 
   return (
