@@ -5,7 +5,7 @@ import { Dashboard } from './components/Dashboard';
 import { WailsBridge } from './services/wailsBridge';
 
 export function App() {
-  const [currentState, setCurrentState] = useState<'DISARMED' | 'ARMED' | 'TRIGGERED'>('DISARMED');
+  const [, setCurrentState] = useState<'DISARMED' | 'ARMED' | 'TRIGGERED'>('DISARMED');
   const [isLocked, setIsLocked] = useState<boolean>(false);
   const [logs, setLogs] = useState<string[]>([]);
 
@@ -80,10 +80,10 @@ export function App() {
         const v = videoRef.current;
         const c = canvasRef.current;
 
-        // If camera stream is not decoding frames yet, retry in 150ms
+        // If camera stream is not decoding frames yet, retry in 100ms
         if (v.readyState < 2 || v.videoWidth === 0) {
-          if (attempt < 15) {
-            setTimeout(() => attemptCapturePhoto(attempt + 1), 150);
+          if (attempt < 25) {
+            setTimeout(() => attemptCapturePhoto(attempt + 1), 100);
           }
           return;
         }
@@ -95,31 +95,15 @@ export function App() {
 
         ctx.drawImage(v, 0, 0, c.width, c.height);
 
-        // Verify camera sensor is not outputting pure black (warm-up test)
-        try {
-          const sample = ctx.getImageData(0, 0, Math.min(40, c.width), Math.min(40, c.height)).data;
-          let brightness = 0;
-          for (let i = 0; i < sample.length; i += 4) {
-            brightness += sample[i] + sample[i + 1] + sample[i + 2];
-          }
-          // If completely pitch black and we haven't retried 5 times, give auto-exposure another 200ms
-          if (brightness < 50 && attempt < 6) {
-            setTimeout(() => attemptCapturePhoto(attempt + 1), 200);
-            return;
-          }
-        } catch {
-          // ignore
-        }
-
         photoCaptured = true;
-        const photoBase64 = c.toDataURL('image/jpeg', 0.65);
+        const photoBase64 = c.toDataURL('image/jpeg', 0.8);
         WailsBridge.processIntruderCapture(photoBase64).catch((err) => {
           console.warn('Process photo capture failed:', err);
         });
       };
 
-      // Start photo check after 500ms sensor warm-up
-      setTimeout(() => attemptCapturePhoto(0), 500);
+      // Start photo check after 300ms sensor warm-up
+      setTimeout(() => attemptCapturePhoto(0), 300);
 
       // 2. Start Video Evidence Recorder (12 seconds background recording)
       const chunks: Blob[] = [];
@@ -328,9 +312,34 @@ export function App() {
 
   return (
     <div className="w-screen h-screen overflow-hidden bg-[#050505] text-white relative">
-      {/* Hidden global video & canvas pipeline (persists across all screens) */}
-      <video ref={videoRef} className="hidden" autoPlay playsInline muted />
-      <canvas ref={canvasRef} className="hidden" />
+      {/* Off-screen video & canvas capture pipeline (must not be display:none so Chromium decodes frames) */}
+      <video
+        ref={videoRef}
+        style={{
+          position: 'fixed',
+          top: -9999,
+          left: -9999,
+          width: '640px',
+          height: '480px',
+          opacity: 0,
+          pointerEvents: 'none',
+        }}
+        autoPlay
+        playsInline
+        muted
+      />
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: 'fixed',
+          top: -9999,
+          left: -9999,
+          width: '640px',
+          height: '480px',
+          opacity: 0,
+          pointerEvents: 'none',
+        }}
+      />
 
       {isLocked ? (
         <Lockbox
@@ -339,32 +348,6 @@ export function App() {
         />
       ) : (
         <Dashboard onTriggerTrap={handleTriggerTrap} logs={logs} />
-      )}
-
-      {/* FLOATING ARMED OVERLAY BADGE (POSISI PERSIS SEPERTI SUBTITLE DI BAWAH TENGAH LAYAR) */}
-      {currentState === 'ARMED' && !isLocked && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 px-6 py-2.5 bg-[#050505]/95 border-2 border-[#FF003C] rounded-md shadow-[0_0_30px_rgba(255,0,60,0.65)] text-xs font-mono select-none backdrop-blur-md">
-          <div className="flex items-center gap-2.5">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full bg-[#FF003C] opacity-75" />
-              <span className="relative inline-flex h-3 w-3 bg-[#FF003C]" />
-            </span>
-            <span className="text-[#FF003C] font-black tracking-widest uppercase">
-              SNOOPTRAP // ARMED &amp; GUARDIAN ACTIVE
-            </span>
-          </div>
-
-          <div className="text-[11px] text-[#A0A0A0] border-l border-[#333] pl-3">
-            Tekan <strong className="text-white bg-[#1a1a1a] px-1.5 py-0.5 border border-[#333]">Ctrl + Alt + U</strong> atau tap tombol Telegram untuk Disarm
-          </div>
-
-          <button
-            onClick={() => WailsBridge.disarmSystem('')}
-            className="px-3 py-1 bg-[#FF003C] text-[#050505] font-black text-[10px] tracking-wider uppercase hover:bg-white transition-all cursor-pointer shadow-[0_0_10px_#FF003C]"
-          >
-            DISARM NOW
-          </button>
-        </div>
       )}
     </div>
   );
