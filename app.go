@@ -35,6 +35,7 @@ type App struct {
 	status             string // "DISARMED", "ARMED", "TRIGGERED"
 	currentOTP         string
 	logs               []string
+	logsMu             sync.Mutex
 	mu                 sync.RWMutex
 	cancelPoll         context.CancelFunc
 	armedAt            time.Time
@@ -175,16 +176,16 @@ func (a *App) restartTelegramListener() {
 }
 
 func (a *App) addLog(msg string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
 	timestamp := time.Now().Format("15:04:05")
 	entry := fmt.Sprintf("[%s] %s", timestamp, msg)
 	println(entry)
+
+	a.logsMu.Lock()
 	a.logs = append(a.logs, entry)
 	if len(a.logs) > 50 {
 		a.logs = a.logs[len(a.logs)-50:]
 	}
+	a.logsMu.Unlock()
 
 	go func(line string) {
 		dir, err := config.GetConfigDir()
@@ -304,16 +305,15 @@ func (a *App) ArmSystem() {
 // DisarmSystem disarms the trap
 func (a *App) DisarmSystem(passcode string) bool {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	masterPIN := a.cfg.EmergencyMasterPIN
-	if masterPIN == "" {
-		masterPIN = "123456"
+	masterPIN := "123456"
+	if a.cfg != nil && a.cfg.EmergencyMasterPIN != "" {
+		masterPIN = a.cfg.EmergencyMasterPIN
 	}
 
 	// In disarmed mode or verified OTP
 	// If passcode is empty (disarmed via Ctrl+Alt+U or Telegram button), or matches dynamic OTP, or matches user-configured Emergency Master PIN
 	if a.status == "TRIGGERED" && passcode != "" && passcode != a.currentOTP && passcode != masterPIN {
+		a.mu.Unlock()
 		a.addLog(fmt.Sprintf("[AUTH] Invalid OTP attempt: %s", passcode))
 		return false
 	}
@@ -321,6 +321,8 @@ func (a *App) DisarmSystem(passcode string) bool {
 	a.status = "DISARMED"
 	a.isAutoArmed = false
 	a.currentOTP = ""
+	a.mu.Unlock()
+
 	hook.DisableKeyboardBlocker()
 	audio.StopAlarm()
 
@@ -468,9 +470,11 @@ func (a *App) GetAudioDevices() []audio.AudioDevice {
 
 // GetLogs returns terminal logs
 func (a *App) GetLogs() []string {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.logs
+	a.logsMu.Lock()
+	defer a.logsMu.Unlock()
+	copied := make([]string, len(a.logs))
+	copy(copied, a.logs)
+	return copied
 }
 
 // GetStatus returns current state
