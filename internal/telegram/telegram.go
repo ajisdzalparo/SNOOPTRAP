@@ -10,6 +10,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"strings"
 	"time"
 )
@@ -97,7 +98,7 @@ func (c *Client) SendPhotoWithOTP(otp string, imageBase64 string) error {
 	return nil
 }
 
-// SendVideo sends a video recording with audio to the owner's Telegram
+// SendVideo sends a video recording with audio to the owner's Telegram (with automatic fallback to sendDocument)
 func (c *Client) SendVideo(videoBase64 string, caption string) error {
 	if c.botToken == "" || c.chatID == "" {
 		return fmt.Errorf("telegram token or chat ID is not configured")
@@ -112,24 +113,41 @@ func (c *Client) SendVideo(videoBase64 string, caption string) error {
 		return fmt.Errorf("failed to decode base64 video: %w", err)
 	}
 
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendVideo", c.botToken)
+	if caption == "" {
+		caption = fmt.Sprintf("🎥 <b>INTRUDER EVIDENCE RECORDING</b>\nBukti rekaman video & audio penyusup.\n🕒 Waktu: %s", time.Now().Format("2006-01-02 15:04:05"))
+	}
+
+	// 1. Attempt sendVideo (inline video player in Telegram)
+	err = c.dispatchVideoPayload("sendVideo", "video", "intruder_evidence.mp4", videoBytes, caption)
+	if err == nil {
+		return nil
+	}
+
+	// 2. Fallback to sendDocument if sendVideo is rejected
+	return c.dispatchVideoPayload("sendDocument", "document", "intruder_evidence.mp4", videoBytes, caption)
+}
+
+func (c *Client) dispatchVideoPayload(endpoint, fieldName, filename string, data []byte, caption string) error {
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", c.botToken, endpoint)
 
 	var reqBody bytes.Buffer
 	writer := multipart.NewWriter(&reqBody)
 
 	_ = writer.WriteField("chat_id", c.chatID)
-	if caption == "" {
-		caption = fmt.Sprintf("🎥 <b>INTRUDER EVIDENCE RECORDING</b>\nBukti rekaman video & audio penyusup.\n🕒 Waktu: %s", time.Now().Format("2006-01-02 15:04:05"))
-	}
 	_ = writer.WriteField("caption", caption)
 	_ = writer.WriteField("parse_mode", "HTML")
-	_ = writer.WriteField("supports_streaming", "true")
+	if endpoint == "sendVideo" {
+		_ = writer.WriteField("supports_streaming", "true")
+	}
 
-	part, err := writer.CreateFormFile("video", "intruder_evidence.webm")
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldName, filename))
+	h.Set("Content-Type", "video/mp4")
+	part, err := writer.CreatePart(h)
 	if err != nil {
 		return err
 	}
-	if _, err := part.Write(videoBytes); err != nil {
+	if _, err := part.Write(data); err != nil {
 		return err
 	}
 
@@ -151,7 +169,7 @@ func (c *Client) SendVideo(videoBase64 string, caption string) error {
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("telegram api returned status %d: %s", resp.StatusCode, string(respBytes))
+		return fmt.Errorf("telegram api %s returned status %d: %s", endpoint, resp.StatusCode, string(respBytes))
 	}
 
 	return nil

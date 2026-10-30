@@ -104,7 +104,7 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
             }
           }, 350);
 
-          // 2. Start Video + Audio Recorder (5 seconds of live footage)
+          // 2. Start Video + Audio Recorder (4 seconds of live footage)
           try {
             const recordedChunks: Blob[] = [];
             let mimeType = 'video/webm;codecs=vp8,opus';
@@ -131,22 +131,40 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
                   WailsBridge.processIntruderVideo(base64Video)
                     .then((ok) => {
                       setVideoStatus(ok ? 'VIDEO_SENT' : 'VIDEO_FAILED');
+                      if (stream) stream.getTracks().forEach((track) => track.stop());
                     })
-                    .catch(() => setVideoStatus('NET_ERROR'));
+                    .catch(() => {
+                      setVideoStatus('NET_ERROR');
+                      if (stream) stream.getTracks().forEach((track) => track.stop());
+                    });
                 };
                 reader.readAsDataURL(blob);
+              } else {
+                if (stream) stream.getTracks().forEach((track) => track.stop());
               }
             };
 
-            recorder.start(1000);
-            setVideoStatus('RECORDING_5S...');
+            recorder.start(200);
+            let secondsLeft = 4;
+            setVideoStatus(`REC_${secondsLeft}S...`);
 
-            // Automatically stop recording after 5 seconds
+            const countTimer = setInterval(() => {
+              secondsLeft -= 1;
+              if (secondsLeft > 0) {
+                setVideoStatus(`REC_${secondsLeft}S...`);
+              } else {
+                clearInterval(countTimer);
+                setVideoStatus('TRANSMITTING_VIDEO...');
+              }
+            }, 1000);
+
+            // Automatically stop recording after 4 seconds
             timeoutId = setTimeout(() => {
+              clearInterval(countTimer);
               if (recorder.state === 'recording') {
                 recorder.stop();
               }
-            }, 5000);
+            }, 4000);
           } catch (recErr) {
             console.error('MediaRecorder initialization failed:', recErr);
             setVideoStatus('RECORDER_ERR');
@@ -169,8 +187,7 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
         } catch {
           // ignore
         }
-      }
-      if (stream) {
+      } else if (stream) {
         stream.getTracks().forEach((track) => track.stop());
       }
     };
