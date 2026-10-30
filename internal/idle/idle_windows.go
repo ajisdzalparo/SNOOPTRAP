@@ -10,12 +10,28 @@ var (
 	user32               = syscall.NewLazyDLL("user32.dll")
 	kernel32             = syscall.NewLazyDLL("kernel32.dll")
 	procGetLastInputInfo = user32.NewProc("GetLastInputInfo")
+	procGetCursorPos     = user32.NewProc("GetCursorPos")
 	procGetTickCount     = kernel32.NewProc("GetTickCount")
 )
 
 type LASTINPUTINFO struct {
 	CbSize uint32
 	DwTime uint32
+}
+
+type POINT struct {
+	X int32
+	Y int32
+}
+
+// GetCursorPos returns current mouse cursor coordinates (X, Y)
+func GetCursorPos() (int32, int32, error) {
+	var pt POINT
+	r1, _, err := procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+	if r1 == 0 {
+		return 0, 0, err
+	}
+	return pt.X, pt.Y, nil
 }
 
 // GetLastInputTick returns the raw tick (in ms) of the last mouse or keyboard input

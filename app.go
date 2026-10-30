@@ -38,6 +38,9 @@ type App struct {
 	cancelPoll         context.CancelFunc
 	armedAt            time.Time
 	lastInputTickAtArm uint32
+	initialCursorX     int32
+	initialCursorY     int32
+	isAutoArmed        bool
 	isQuitting         bool
 }
 
@@ -199,7 +202,7 @@ func (a *App) addLog(msg string) {
 }
 
 func (a *App) startIdleMonitor() {
-	ticker := time.NewTicker(400 * time.Millisecond)
+	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -219,31 +222,62 @@ func (a *App) startIdleMonitor() {
 			autoArm := a.cfg.AutoArm
 			armedAt := a.armedAt
 			lastTickAtArm := a.lastInputTickAtArm
+			initX := a.initialCursorX
+			initY := a.initialCursorY
+			isAuto := a.isAutoArmed
 			a.mu.RUnlock()
 
 			// 1. Check auto arm when disarmed and idle long enough
 			if autoArm && currentState == "DISARMED" && idleSecs >= threshold {
+				a.mu.Lock()
+				a.isAutoArmed = true
+				a.mu.Unlock()
 				a.ArmSystem()
 				continue
 			}
 
-			// 2. If system is Armed, monitor for unauthorized mouse movement or key press
+			// 2. If system is Armed, monitor for intentional mouse movement or key press
 			if currentState == "ARMED" {
-				// Stabilization: 4 seconds grace to allow the owner to remove their hand from the mouse without triggering breach
-				if time.Since(armedAt) < 4*time.Second {
-					currentTick, err := idle.GetLastInputTick()
-					if err == nil {
-						a.mu.Lock()
-						a.lastInputTickAtArm = currentTick
-						a.mu.Unlock()
+				curX, curY, _ := idle.GetCursorPos()
+				dx := int(curX - initX)
+				dy := int(curY - initY)
+				distSq := dx*dx + dy*dy
+
+				// Significant mouse movement (> 30 pixels distance)
+				// Ignores optical sensor micro-jitter or desk bumps!
+				isSignificantMouseMoved := distSq > 900
+
+				currentTick, err := idle.GetLastInputTick()
+				hasAnyInput := (err == nil && currentTick != lastTickAtArm && idleSecs < 2)
+
+				// CASE A: Within the 3-second buffer after idle / arming
+				if time.Since(armedAt) < 3*time.Second {
+					if hasAnyInput {
+						if isAuto {
+							// If it was auto-armed and user touched laptop within 3s, they are still at the desk!
+							// Smoothly return to standby without triggering alarm
+							a.addLog("[GUARD] Activity detected within 3s of idle auto-arm. Resuming standby.")
+							a.DisarmSystem("")
+						} else {
+							// Manual arm: update stabilization baseline so user lifting their hand doesn't trigger
+							a.mu.Lock()
+							a.lastInputTickAtArm = currentTick
+							a.initialCursorX = curX
+							a.initialCursorY = curY
+							a.mu.Unlock()
+						}
 					}
 					continue
 				}
 
-				// System is HOT! A breach occurs ONLY when a NEW input event is detected
-				currentTick, err := idle.GetLastInputTick()
-				if err == nil && currentTick != lastTickAtArm && idleSecs < 2 {
-					a.TriggerTrap()
+				// CASE B: System is fully HOT (after 3 seconds)
+				// Triggers ONLY if:
+				// - Significant mouse movement (> 30 pixels) OR
+				// - An actual key is pressed on keyboard (distSq < 25 but hasAnyInput is true)
+				if hasAnyInput {
+					if isSignificantMouseMoved || distSq < 25 {
+						a.TriggerTrap()
+					}
 				}
 			}
 		}
@@ -257,6 +291,9 @@ func (a *App) ArmSystem() {
 	a.armedAt = time.Now()
 	tick, _ := idle.GetLastInputTick()
 	a.lastInputTickAtArm = tick
+	curX, curY, _ := idle.GetCursorPos()
+	a.initialCursorX = curX
+	a.initialCursorY = curY
 	botToken := a.cfg.TelegramBotToken
 	chatID := a.cfg.TelegramChatID
 	a.mu.Unlock()
@@ -295,6 +332,7 @@ func (a *App) DisarmSystem(passcode string) bool {
 	}
 
 	a.status = "DISARMED"
+	a.isAutoArmed = false
 	a.currentOTP = ""
 	hook.DisableKeyboardBlocker()
 	audio.StopAlarm()
