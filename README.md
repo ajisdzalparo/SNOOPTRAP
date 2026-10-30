@@ -82,13 +82,13 @@ Hasil file biner eksekutabel berada di: `build/bin/snooptrap.exe`.
 
 ## 🌐 Deploy VPS Relay Streaming (Docker)
 
-Hanya modul **Relay Streaming** (`relay-service`) yang dibangun ke dalam Docker. Client desktop SnoopTrap tetap berjalan secara native di Windows.
+Service streaming relay sekarang berada di repositori terpisah yang sangat ringan: [SNOPTRAP_SERVICES](https://github.com/ajisdzalparo/SNOPTRAP_SERVICES). Anda tidak perlu meng-clone seluruh client desktop di VPS.
 
 ### Jalankan di VPS:
 ```bash
-# Clone repository di VPS
-git clone https://github.com/ajisdzalparo/SNOOPTRAP.git
-cd SNOOPTRAP
+# Clone repository service terpisah di VPS
+git clone https://github.com/ajisdzalparo/SNOPTRAP_SERVICES.git
+cd SNOPTRAP_SERVICES
 
 # Jalankan via Docker Compose
 docker compose up -d --build
