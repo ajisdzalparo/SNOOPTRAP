@@ -62,6 +62,7 @@ var (
 	isBlocked      bool
 	hookStarted    bool
 	secretDisarmFn func()
+	onKeyPressFn   func()
 
 	// Hardware key tracking
 	isCtrlDown bool
@@ -75,6 +76,13 @@ func SetSecretDisarmCallback(fn func()) {
 	secretDisarmFn = fn
 }
 
+// SetOnKeyPressCallback sets the callback invoked whenever any physical key is pressed
+func SetOnKeyPressCallback(fn func()) {
+	hookMutex.Lock()
+	defer hookMutex.Unlock()
+	onKeyPressFn = fn
+}
+
 func keyboardProc(nCode int32, wParam uintptr, lParam uintptr) uintptr {
 	if nCode < 0 || lParam == 0 {
 		r1, _, _ := procCallNextHookEx.Call(0, uintptr(nCode), wParam, lParam)
@@ -85,6 +93,16 @@ func keyboardProc(nCode int32, wParam uintptr, lParam uintptr) uintptr {
 	vk := kbd.VkCode
 	isKeyDown := (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)
 	isKeyUp := (wParam == WM_KEYUP || wParam == WM_SYSKEYUP)
+
+	// Notify keypress event listener for intentional activity detection
+	if isKeyDown {
+		hookMutex.Lock()
+		kpFn := onKeyPressFn
+		hookMutex.Unlock()
+		if kpFn != nil {
+			go kpFn()
+		}
+	}
 
 	// Track Ctrl and Alt states continuously
 	if vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL {

@@ -18,8 +18,66 @@ export function App() {
   const peerRef = useRef<Peer | null>(null);
   const isRecordingRef = useRef<boolean>(false);
 
+  const initPeerStream = async (room: string) => {
+    if (!room) return;
+    try {
+      if (!streamRef.current || !streamRef.current.active) {
+        try {
+          streamRef.current = await navigator.mediaDevices.getUserMedia({
+            video: { width: 1280, height: 720 },
+            audio: true,
+          });
+        } catch {
+          streamRef.current = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480 },
+            audio: false,
+          });
+        }
+      }
+
+      if (peerRef.current) {
+        if ((peerRef.current as any).id === room && !peerRef.current.destroyed) {
+          return;
+        }
+        try {
+          peerRef.current.destroy();
+        } catch {}
+      }
+
+      const peer = new Peer(room, {
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' },
+          ],
+        },
+      });
+      peerRef.current = peer;
+
+      peer.on('call', async (call) => {
+        try {
+          if (!streamRef.current || !streamRef.current.active) {
+            streamRef.current = await navigator.mediaDevices.getUserMedia({
+              video: { width: 1280, height: 720 },
+              audio: true,
+            });
+          }
+          call.answer(streamRef.current);
+        } catch (callErr) {
+          console.warn('Call answer error:', callErr);
+        }
+      });
+    } catch (peerErr) {
+      console.warn('WebRTC PeerJS init warning:', peerErr);
+    }
+  };
+
   // Global persistent camera & video pipeline
-  const startBreachSurveillance = async () => {
+  const startBreachSurveillance = async (targetRoom?: string) => {
     if (isRecordingRef.current) return;
     isRecordingRef.current = true;
 
@@ -69,33 +127,9 @@ export function App() {
         }
       }
 
-      // Stealth WebRTC Streaming Node (Zero indicators on laptop screen)
-      const streamRoomId = 'snoop-' + Math.random().toString(36).substring(2, 9);
-      try {
-        if (peerRef.current) {
-          peerRef.current.destroy();
-        }
-        const peer = new Peer(streamRoomId, {
-          config: {
-            iceServers: [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' },
-            ],
-          },
-        });
-        peerRef.current = peer;
-
-        peer.on('open', () => {
-          WailsBridge.setStreamRoomID(streamRoomId);
-        });
-
-        peer.on('call', (call) => {
-          if (streamRef.current) {
-            call.answer(streamRef.current);
-          }
-        });
-      } catch (peerErr) {
-        console.warn('WebRTC PeerJS init warning:', peerErr);
+      // Stealth WebRTC Streaming Node
+      if (targetRoom) {
+        initPeerStream(targetRoom);
       }
 
       // Canvas Snapshot Fallback
@@ -170,10 +204,7 @@ export function App() {
                   setRecordingStatus('failed');
                 })
                 .finally(() => {
-                  if (streamRef.current) {
-                    streamRef.current.getTracks().forEach((t) => t.stop());
-                    streamRef.current = null;
-                  }
+                  // Do not stop streamRef here so that live surveillance feed remains active for the owner!
                 });
             } else {
               setRecordingStatus('failed');
@@ -182,10 +213,6 @@ export function App() {
           reader.readAsDataURL(blob);
         } else {
           setRecordingStatus('idle');
-          if (streamRef.current) {
-            streamRef.current.getTracks().forEach((t) => t.stop());
-            streamRef.current = null;
-          }
         }
       };
 
@@ -264,6 +291,12 @@ export function App() {
         startBreachSurveillance();
       } else if (newState === 'DISARMED') {
         setIsLocked(false);
+        if (streamRef.current) {
+          try {
+            streamRef.current.getTracks().forEach((t) => t.stop());
+          } catch {}
+          streamRef.current = null;
+        }
         if (peerRef.current) {
           try {
             peerRef.current.destroy();
@@ -282,45 +315,15 @@ export function App() {
       }
     });
 
-    WailsBridge.onEvent('breach-triggered', () => {
+    WailsBridge.onEvent('breach-triggered', (payload: any) => {
       setCurrentState('TRIGGERED');
       setIsLocked(true);
-      startBreachSurveillance();
+      const targetRoom = typeof payload === 'string' ? payload : payload?.room;
+      startBreachSurveillance(targetRoom);
     });
 
-    WailsBridge.onEvent('start-stream-feed', async (room: string) => {
-      try {
-        if (!streamRef.current) {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 1280, height: 720 },
-            audio: true,
-          });
-          streamRef.current = stream;
-        }
-        if (peerRef.current) {
-          try {
-            peerRef.current.destroy();
-          } catch {
-            // ignore
-          }
-        }
-        const peer = new Peer(room, {
-          config: {
-            iceServers: [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' },
-            ],
-          },
-        });
-        peerRef.current = peer;
-        peer.on('call', (call) => {
-          if (streamRef.current) {
-            call.answer(streamRef.current);
-          }
-        });
-      } catch (err) {
-        console.warn('Start stream feed failed:', err);
-      }
+    WailsBridge.onEvent('start-stream-feed', (room: string) => {
+      initPeerStream(room);
     });
     // Periodic fallback status sync (ensures UI unlocks instantly even if event is dropped)
     const statusInterval = setInterval(async () => {

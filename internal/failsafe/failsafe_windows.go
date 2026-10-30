@@ -20,6 +20,7 @@ var (
 	procSwitchToThisWindow       = user32.NewProc("SwitchToThisWindow")
 	procAttachThreadInput        = user32.NewProc("AttachThreadInput")
 	procGetWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
+	procGetSystemMetrics         = user32.NewProc("GetSystemMetrics")
 	procGetCurrentThreadId       = kernel32.NewProc("GetCurrentThreadId")
 )
 
@@ -34,8 +35,8 @@ func ForceBringToFront(windowTitle string) {
 		return
 	}
 
-	// 1. Restore & unminimize
-	procShowWindow.Call(hwnd, 9) // SW_RESTORE
+	// 1. Maximize window
+	procShowWindow.Call(hwnd, 3) // SW_SHOWMAXIMIZED
 
 	// 2. Attach thread input to current foreground window to bypass Windows focus lock
 	fgHwnd, _, _ := procGetForegroundWindow.Call()
@@ -50,8 +51,16 @@ func ForceBringToFront(windowTitle string) {
 		}
 	}
 
-	// 3. HWND_TOPMOST (-1) with SWP_NOMOVE (0x2) | SWP_NOSIZE (0x1) | SWP_SHOWWINDOW (0x40)
-	procSetWindowPos.Call(hwnd, ^uintptr(0), 0, 0, 0, 0, 0x0002|0x0001|0x0040)
+	// 3. HWND_TOPMOST (-1) covering entire primary screen resolution
+	cx, _, _ := procGetSystemMetrics.Call(0) // SM_CXSCREEN
+	cy, _, _ := procGetSystemMetrics.Call(1) // SM_CYSCREEN
+	if cx == 0 {
+		cx = 1920
+	}
+	if cy == 0 {
+		cy = 1080
+	}
+	procSetWindowPos.Call(hwnd, ^uintptr(0), 0, 0, cx, cy, 0x0040) // SWP_SHOWWINDOW
 	procBringWindowToTop.Call(hwnd)
 	procSetForegroundWindow.Call(hwnd)
 	procSwitchToThisWindow.Call(hwnd, 1)

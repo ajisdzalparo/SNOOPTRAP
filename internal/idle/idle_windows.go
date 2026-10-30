@@ -11,7 +11,14 @@ var (
 	kernel32             = syscall.NewLazyDLL("kernel32.dll")
 	procGetLastInputInfo = user32.NewProc("GetLastInputInfo")
 	procGetCursorPos     = user32.NewProc("GetCursorPos")
+	procGetAsyncKeyState   = user32.NewProc("GetAsyncKeyState")
 	procGetTickCount     = kernel32.NewProc("GetTickCount")
+)
+
+const (
+	VK_LBUTTON = 0x01
+	VK_RBUTTON = 0x02
+	VK_MBUTTON = 0x04
 )
 
 type LASTINPUTINFO struct {
@@ -62,4 +69,15 @@ func GetIdleDuration() (time.Duration, error) {
 	// In 32-bit unsigned math, (currentTick - DwTime) handles tick roll-over gracefully
 	idleMillis := currentTick - lii.DwTime
 	return time.Duration(idleMillis) * time.Millisecond, nil
+}
+
+// IsMouseButtonPressed checks whether Left, Right, or Middle mouse button is actively pressed or clicked
+func IsMouseButtonPressed() bool {
+	for _, vk := range []uintptr{VK_LBUTTON, VK_RBUTTON, VK_MBUTTON} {
+		r, _, _ := procGetAsyncKeyState.Call(vk)
+		if uint16(r)&0x8001 != 0 {
+			return true
+		}
+	}
+	return false
 }

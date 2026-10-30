@@ -115,43 +115,55 @@ const viewerHTML = `<!DOCTYPE html>
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
             { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' }
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' }
           ]
         }
       });
 
-      peer.on('open', (id) => {
-        statusText.innerText = "Tersambung ke Relay. Memanggil kamera laptop (" + room + ")...";
+      let activeCall = null;
+      function callLaptop() {
+        if (!peer || peer.destroyed) return;
+        statusText.innerText = "Memanggil kamera laptop (" + room + ")...";
         liveBadge.innerText = "CALLING...";
 
-        // Call the laptop's PeerJS room
-        const call = peer.call(room, new MediaStream());
+        activeCall = peer.call(room, new MediaStream());
+        if (!activeCall) return;
 
-        call.on('stream', (stream) => {
+        activeCall.on('stream', (stream) => {
           remoteVideo.srcObject = stream;
           remoteVideo.play().catch(()=>{});
           liveBadge.innerText = "LIVE (30 FPS)";
           liveBadge.style.color = "#00ff41";
           fpsText.innerText = "FPS: 30 | AUDIO: LIVE";
-          statusText.innerText = "Siaran langsung aktif! Kamera dan mikrofon laptop sedang menyiarkan siaran real-time.";
+          statusText.innerText = "Siaran langsung aktif! Kamera & mic laptop terhubung real-time.";
         });
 
-        call.on('close', () => {
+        activeCall.on('close', () => {
           liveBadge.innerText = "DISCONNECTED";
           liveBadge.style.color = "#ff003c";
           statusText.innerText = "Panggilan live feed selesai / laptop disarm.";
         });
 
-        call.on('error', (err) => {
+        activeCall.on('error', (err) => {
           statusText.innerText = "Koneksi terputus: " + err;
         });
+      }
+
+      peer.on('open', (id) => {
+        statusText.innerText = "Tersambung ke Relay. Memanggil kamera laptop (" + room + ")...";
+        liveBadge.innerText = "CALLING...";
+        callLaptop();
       });
 
       peer.on('error', (err) => {
         if (err.type === 'peer-unavailable') {
-          statusText.innerText = "Laptop sedang offline atau feed belum dimulai. Kirim /stream di Telegram untuk memicu feed.";
+          statusText.innerText = "Kamera laptop sedang bersiap... Menghubungkan ulang dalam 2 detik.";
+          setTimeout(() => {
+            callLaptop();
+          }, 2500);
         } else {
-          statusText.innerText = "PeerJS Notice: " + err.type + " - " + err.message;
+          statusText.innerText = "Status koneksi: " + err.type;
         }
       });
     }

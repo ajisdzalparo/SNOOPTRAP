@@ -30,6 +30,10 @@ export function GetStatus() {
   return window['go']['main']['App']['GetStatus']();
 }
 
+export function GetStreamRoomID() {
+  return window['go']['main']['App']['GetStreamRoomID']();
+}
+
 export function GetStreamURL() {
   return window['go']['main']['App']['GetStreamURL']();
 }

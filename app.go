@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -46,6 +47,15 @@ type App struct {
 	initialCursorY     int32
 	isAutoArmed        bool
 	isQuitting         bool
+
+	// Intentional Activity Detection (Filters accidental desk bumps / shifts)
+	armedKeypressCount   int
+	armedMouseClickCount int
+	armedMouseMovedTicks int
+	armedTotalDistance   float64
+	lastArmedActivityAt  time.Time
+	prevArmedCursorX     int32
+	prevArmedCursorY     int32
 }
 
 // NewApp creates a new App application struct
@@ -77,6 +87,28 @@ func (a *App) startup(ctx context.Context) {
 	hook.SetSecretDisarmCallback(func() {
 		a.addLog("[SECRET_HOTKEY] Ctrl+Alt+U detected! Silently disarming SnoopTrap.")
 		a.DisarmSystem("")
+	})
+
+	// Install physical hardware keypress detector (for intentional usage confirmation)
+	hook.SetOnKeyPressCallback(func() {
+		a.mu.Lock()
+		if a.status == "ARMED" {
+			now := time.Now()
+			// If previous activity was more than 4 seconds ago, reset counter
+			if time.Since(a.lastArmedActivityAt) > 4*time.Second {
+				a.armedKeypressCount = 0
+				a.armedMouseClickCount = 0
+				a.armedMouseMovedTicks = 0
+				a.armedTotalDistance = 0
+			}
+			a.armedKeypressCount++
+			a.lastArmedActivityAt = now
+			count := a.armedKeypressCount
+			a.mu.Unlock()
+			a.addLog(fmt.Sprintf("[GUARD] Physical keystroke detected (%d). Evaluating intentional activity...", count))
+		} else {
+			a.mu.Unlock()
+		}
 	})
 	hook.InstallHook()
 
@@ -206,7 +238,7 @@ func (a *App) addLog(msg string) {
 }
 
 func (a *App) startIdleMonitor() {
-	ticker := time.NewTicker(300 * time.Millisecond)
+	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -224,14 +256,9 @@ func (a *App) startIdleMonitor() {
 			currentState := a.status
 			threshold := a.cfg.IdleThresholdSeconds
 			autoArm := a.cfg.AutoArm
-			armedAt := a.armedAt
-			lastTickAtArm := a.lastInputTickAtArm
-			initX := a.initialCursorX
-			initY := a.initialCursorY
-			isAuto := a.isAutoArmed
 			a.mu.RUnlock()
 
-			// 1. Check auto arm when disarmed and idle long enough
+			// 1. Auto arm when disarmed and idle long enough
 			if autoArm && currentState == "DISARMED" && idleSecs >= threshold {
 				a.mu.Lock()
 				a.isAutoArmed = true
@@ -240,33 +267,68 @@ func (a *App) startIdleMonitor() {
 				continue
 			}
 
-			// 2. If system is Armed, monitor for intentional mouse movement or key press
+			// 2. If system is Armed, monitor for confirmed intentional laptop usage
 			if currentState == "ARMED" {
 				curX, curY, _ := idle.GetCursorPos()
-				dx := int(curX - initX)
-				dy := int(curY - initY)
-				distSq := dx*dx + dy*dy
+				isMouseClicked := idle.IsMouseButtonPressed()
 
-				// Significant mouse movement (> 30 pixels distance)
-				// Ignores optical sensor micro-jitter or desk bumps!
-				isSignificantMouseMoved := distSq > 900
-
-				currentTick, err := idle.GetLastInputTick()
-				hasRecentInput := (err == nil && currentTick != lastTickAtArm && idleSecs < 2)
-				isTriggered := isSignificantMouseMoved || hasRecentInput
-
-				// CASE A: Only apply 3-second grace buffer if system was AUTO-ARMED by idle detection
-				// If armed manually or via Telegram /arm, it is hot immediately!
-				if isAuto && time.Since(armedAt) < 3*time.Second {
-					if isTriggered {
-						a.addLog("[GUARD] Activity detected within 3s of idle auto-arm. Resuming standby.")
-						a.DisarmSystem("")
-					}
-					continue
+				a.mu.Lock()
+				// Decay activity window if no activity within last 4 seconds
+				if time.Since(a.lastArmedActivityAt) > 4*time.Second {
+					a.armedKeypressCount = 0
+					a.armedMouseClickCount = 0
+					a.armedMouseMovedTicks = 0
+					a.armedTotalDistance = 0
 				}
 
-				// CASE B: System is fully HOT
-				if isTriggered {
+				if isMouseClicked {
+					a.armedMouseClickCount++
+					a.lastArmedActivityAt = time.Now()
+				}
+
+				// Measure cursor displacement since last sample
+				stepDx := float64(curX - a.prevArmedCursorX)
+				stepDy := float64(curY - a.prevArmedCursorY)
+				stepDist := math.Hypot(stepDx, stepDy)
+				if stepDist > 25.0 {
+					// Meaningful cursor move
+					a.armedMouseMovedTicks++
+					a.armedTotalDistance += stepDist
+					a.lastArmedActivityAt = time.Now()
+				}
+				a.prevArmedCursorX = curX
+				a.prevArmedCursorY = curY
+
+				kpCount := a.armedKeypressCount
+				clickCount := a.armedMouseClickCount
+				movedTicks := a.armedMouseMovedTicks
+				totDist := a.armedTotalDistance
+				isAuto := a.isAutoArmed
+				armedSince := time.Since(a.armedAt)
+				a.mu.Unlock()
+
+				// Evaluation: Filter out accidental desk bumps, vibrations, or lifting/moving laptop:
+				// - Desk bump / vibration: mouse moves 20-50px in 1 tick, 0 clicks, 0 keys -> ignored
+				// - Moving laptop: mouse glides 100-150px, maybe 1 accidental edge keypress -> ignored
+				// Genuine laptop usage requires:
+				// 1. Mouse Click: someone clicked on the screen (>= 1 click)
+				// 2. Typing: someone pressed at least 3 keystrokes (>= 3 keys)
+				// 3. Sustained Mouse Navigation: mouse moved across >= 4 samples AND total distance >= 300px
+				// 4. Combined activity score >= 4
+				isIntentionalUse := clickCount >= 1 ||
+					kpCount >= 3 ||
+					(movedTicks >= 4 && totDist >= 300.0) ||
+					(clickCount*2 + kpCount + (movedTicks/2)) >= 4
+
+				if isIntentionalUse {
+					// Grace buffer for auto-arm: if user starts using within 3s of auto-arm, resume standby without alarm
+					if isAuto && armedSince < 3*time.Second {
+						a.addLog("[GUARD] Activity detected within 3s of auto-arm. Resuming standby.")
+						a.DisarmSystem("")
+						continue
+					}
+
+					a.addLog(fmt.Sprintf("[BREACH] Confirmed intentional usage! (Keys: %d, Clicks: %d, MoveTicks: %d, Dist: %.0fpx)", kpCount, clickCount, movedTicks, totDist))
 					a.TriggerTrap()
 				}
 			}
@@ -276,29 +338,48 @@ func (a *App) startIdleMonitor() {
 
 // ArmSystem arms the trap
 func (a *App) ArmSystem() {
+	curX, curY, _ := idle.GetCursorPos()
+	tick, _ := idle.GetLastInputTick()
+
 	a.mu.Lock()
 	a.status = "ARMED"
 	a.armedAt = time.Now()
-	tick, _ := idle.GetLastInputTick()
 	a.lastInputTickAtArm = tick
-	curX, curY, _ := idle.GetCursorPos()
 	a.initialCursorX = curX
 	a.initialCursorY = curY
+	a.prevArmedCursorX = curX
+	a.prevArmedCursorY = curY
+	a.armedKeypressCount = 0
+	a.armedMouseClickCount = 0
+	a.armedMouseMovedTicks = 0
+	a.armedTotalDistance = 0
+	a.lastArmedActivityAt = time.Now()
 	botToken := a.cfg.TelegramBotToken
 	chatID := a.cfg.TelegramChatID
 	a.mu.Unlock()
 
-	a.addLog("[ARMED] Guardian trap is now active. Guarding laptop...")
+	a.addLog("[ARMED] Guardian trap is now active. Guarding laptop (filtering bumps/shifts)...")
 	wailsRuntime.EventsEmit(a.ctx, "status-change", "ARMED")
 
 	// Ensure background telegram listener is running
 	a.ensureTelegramListener()
 
-	// Send notification message to Telegram with interactive button
+	// Send notification message to Telegram with full /help commands guide & disarm button
 	if botToken != "" && chatID != "" {
 		go func() {
 			tg := telegram.NewClient(botToken, chatID)
-			msg := "🛡️ <b>SnoopTrap Siaga: Laptop Anda sedang dijaga.</b>\n<i>(Belum ada yang menyentuh laptop).</i>\n\nSaat Anda mau kembali ke meja, tap tombol di bawah ini agar laptop bisa langsung dipakai tanpa alarm:"
+			msg := `🛡️ <b>SnoopTrap Siaga Aktif!</b>
+Laptop Anda sedang dijaga penuh. Jika mouse/keyboard digunakan oleh orang lain, alarm & live feed kamera langsung terpicu!
+
+📋 <b>Panduan Perintah Telegram:</b>
+🛡️ <b>/arm</b> — Aktifkan mode siaga
+🔓 <b>/disarm</b> — Matikan siaga / buka kuncian
+🔴 <b>/stream</b> — Tonton siaran langsung kamera & mic real-time
+🎙️ <b>Kirim VN (Voice Note)</b> — Suara Anda diputar di speaker laptop (volume 100%)
+🚨 <b>/nuke</b> — Kunci Windows darurat
+📊 <b>/status</b> — Cek status laptop saat ini
+
+<i>Saat Anda mau kembali ke meja, tap tombol di bawah:</i>`
 			_ = tg.SendMessageWithInlineButton(msg, "🔓 SAYA SUDAH KEMBALI (DISARM)", "disarm")
 		}()
 	}
@@ -363,21 +444,26 @@ func (a *App) TriggerTrap() {
 	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
 	hook.EnableKeyboardBlocker()
 
-	// Win32 Force Foreground: overrides Windows focus lock so it jumps directly above Google Chrome / active apps
+	// Win32 Force Foreground: overrides Windows focus lock and maximizes to full primary screen bounds
 	failsafe.ForceBringToFront("SnoopTrap // IntruderLens")
 
-	// 2. IMMEDIATELY send Telegram alert with OTP (do NOT wait for webcam!)
+	// Consistent WebRTC stream room & URL
+	roomID := a.GetStreamRoomID()
+	streamURL := a.GetStreamURL()
+
+	// 2. IMMEDIATELY send Telegram alert with OTP and Live Stream Link (do NOT wait for webcam!)
 	if botToken != "" && chatID != "" {
-		go func(otp string) {
+		go func(otp string, liveURL string) {
 			tg := telegram.NewClient(botToken, chatID)
-			msg := fmt.Sprintf("🚨 <b>PERINGATAN PENYUSUP (BREACH DETECTED)!</b>\n\nMouse atau keyboard laptop Anda baru saja disentuh!\n\n🔑 <b>KODE OTP PEMBUKA:</b> <code>%s</code>\n\nMasukkan 6 digit angka di atas pada layar laptop, atau tap tombol di bawah:", otp)
+			msg := fmt.Sprintf("🚨 <b>PERINGATAN PENYUSUP (BREACH DETECTED)!</b>\n\nLaptop Anda baru saja digunakan oleh seseorang!\n\n🔑 <b>KODE OTP:</b> <code>%s</code>\n\n📡 <b>LIVE STREAM KAMERA:</b>\n%s\n\n<i>Klik link di atas atau tap tombol di bawah:</i>", otp, liveURL)
 			_ = tg.SendMessageWithInlineButton(msg, "🔓 SAYA SENDIRI (DISARM)", "disarm")
-		}(currentOTP)
+		}(currentOTP, streamURL)
 	}
 
 	// 3. Notify frontend to immediately capture photo & start video recording in background!
 	wailsRuntime.EventsEmit(a.ctx, "breach-triggered", map[string]interface{}{
-		"otp": currentOTP,
+		"otp":  currentOTP,
+		"room": roomID,
 	})
 
 	// 4. Ensure telegram polling is active for remote commands / buttons
@@ -623,6 +709,16 @@ func (a *App) TestServerConnection(host string, port string) ServerTestResult {
 	}
 }
 
+// GetStreamRoomID returns the active WebRTC stream room ID or creates a persistent one
+func (a *App) GetStreamRoomID() string {
+	room := stream.GetCurrentRoomID()
+	if room == "" {
+		room = fmt.Sprintf("snoop-%d", time.Now().UnixNano()%1000000)
+		stream.SetCurrentRoomID(room)
+	}
+	return room
+}
+
 // SetStreamRoomID updates the active WebRTC stream room ID
 func (a *App) SetStreamRoomID(room string) {
 	stream.SetCurrentRoomID(room)
@@ -630,10 +726,8 @@ func (a *App) SetStreamRoomID(room string) {
 
 // GetStreamURL returns the live streaming URL
 func (a *App) GetStreamURL() string {
-	room := stream.GetCurrentRoomID()
-	if room == "" {
-		room = fmt.Sprintf("snoop-%d", time.Now().Unix()%1000000)
-		stream.SetCurrentRoomID(room)
+	room := a.GetStreamRoomID()
+	if a.ctx != nil {
 		wailsRuntime.EventsEmit(a.ctx, "start-stream-feed", room)
 	}
 

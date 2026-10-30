@@ -38,10 +38,12 @@ const (
 // MaximizeMasterVolume aggressively unmutes and maximizes system volume without flooding the message loop
 func MaximizeMasterVolume() {
 	go func() {
-		for i := 0; i < 25; i++ {
+		// Windows volume steps by 2% per VK_VOLUME_UP press.
+		// 70 pulses guarantees reaching 100% volume even from 0% or muted state (70 * 2% = 140%).
+		for i := 0; i < 70; i++ {
 			procKeybd.Call(uintptr(VK_VOLUME_UP), 0, 0, 0)
 			procKeybd.Call(uintptr(VK_VOLUME_UP), 0, 2, 0) // KEYEVENTF_KEYUP
-			time.Sleep(3 * time.Millisecond)
+			time.Sleep(1 * time.Millisecond)
 		}
 	}()
 }

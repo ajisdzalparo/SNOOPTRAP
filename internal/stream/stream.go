@@ -51,22 +51,61 @@ const viewerHTML = `<!DOCTYPE html>
     if (!room) {
       statusText.innerText = "Error: Room ID tidak ditemukan.";
     } else {
-      const peer = new Peer();
-      peer.on('open', () => {
-        statusText.innerText = "Memanggil kamera laptop...";
-        const call = peer.call(room, new MediaStream());
-        call.on('stream', (stream) => {
+      const peer = new Peer({
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' }
+          ]
+        }
+      });
+
+      let activeCall = null;
+      function callLaptop() {
+        if (!peer || peer.destroyed) return;
+        statusText.innerText = "Memanggil kamera laptop (" + room + ")...";
+        liveBadge.innerText = "CALLING...";
+
+        activeCall = peer.call(room, new MediaStream());
+        if (!activeCall) return;
+
+        activeCall.on('stream', (stream) => {
           liveVideo.srcObject = stream;
           liveVideo.play().catch(()=>{});
           liveBadge.innerText = "[LIVE 30 FPS]";
+          liveBadge.style.color = "#00ff41";
           statusText.innerText = "Siaran langsung aktif (Video + Audio)";
         });
-        call.on('error', (err) => {
+
+        activeCall.on('close', () => {
+          liveBadge.innerText = "DISCONNECTED";
+          liveBadge.style.color = "#ff003c";
+          statusText.innerText = "Panggilan live feed selesai / laptop disarm.";
+        });
+
+        activeCall.on('error', (err) => {
           statusText.innerText = "Koneksi terputus: " + err;
         });
+      }
+
+      peer.on('open', () => {
+        statusText.innerText = "Memanggil kamera laptop (" + room + ")...";
+        callLaptop();
       });
+
       peer.on('error', (err) => {
-        statusText.innerText = "Peer error: " + err;
+        if (err.type === 'peer-unavailable') {
+          statusText.innerText = "Kamera laptop sedang bersiap... Menghubungkan ulang dalam 2 detik.";
+          setTimeout(() => {
+            callLaptop();
+          }, 2500);
+        } else {
+          statusText.innerText = "Status: " + err.type;
+        }
       });
     }
   </script>
