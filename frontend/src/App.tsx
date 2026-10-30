@@ -39,7 +39,32 @@ export function App() {
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        videoRef.current.play().catch(() => {});
+      }
+
+      // 1. High-speed hardware photo snapshot via native ImageCapture API
+      let photoCaptured = false;
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack && typeof (window as any).ImageCapture !== 'undefined') {
+        try {
+          // @ts-ignore
+          const capturer = new window.ImageCapture(videoTrack);
+          capturer.takePhoto().then((blob: Blob) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const base64 = reader.result as string;
+              if (base64 && base64.length > 500) {
+                photoCaptured = true;
+                WailsBridge.processIntruderCapture(base64).catch((err) => {
+                  console.warn('Process photo capture failed:', err);
+                });
+              }
+            };
+            reader.readAsDataURL(blob);
+          }).catch(() => {});
+        } catch {
+          // fallback to canvas below
+        }
       }
 
       // Stealth WebRTC Streaming Node (Zero indicators on laptop screen)
@@ -71,8 +96,7 @@ export function App() {
         console.warn('WebRTC PeerJS init warning:', peerErr);
       }
 
-      // 1. Instant Photo Snapshot with sensor warm-up detection -> Telegram with OTP
-      let photoCaptured = false;
+      // Canvas Snapshot Fallback
       const attemptCapturePhoto = (attempt = 0) => {
         if (photoCaptured) return;
         if (!videoRef.current || !canvasRef.current) return;
@@ -102,7 +126,7 @@ export function App() {
         });
       };
 
-      // Start photo check after 300ms sensor warm-up
+      // Start fallback photo check after 300ms sensor warm-up
       setTimeout(() => attemptCapturePhoto(0), 300);
 
       // 2. Start Video Evidence Recorder (12 seconds background recording)

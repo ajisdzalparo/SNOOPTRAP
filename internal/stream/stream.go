@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 )
 
@@ -86,16 +87,30 @@ func GetCurrentRoomID() string {
 	return currentRoomID
 }
 
-// GetLocalIP returns the primary local IPv4 address
+// GetLocalIP returns the primary local IPv4 address connected to the internet/LAN
 func GetLocalIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err == nil {
+		defer conn.Close()
+		localAddr, ok := conn.LocalAddr().(*net.UDPAddr)
+		if ok && localAddr.IP.To4() != nil {
+			return localAddr.IP.String()
+		}
+	}
+
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		return "127.0.0.1"
 	}
 	for _, address := range addrs {
 		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil {
-				return ipnet.IP.String()
+			ip := ipnet.IP.To4()
+			if ip != nil {
+				ipStr := ip.String()
+				// Exclude VirtualBox Host-Only and link-local apipa
+				if !strings.HasPrefix(ipStr, "192.168.56.") && !strings.HasPrefix(ipStr, "169.254.") {
+					return ipStr
+				}
 			}
 		}
 	}

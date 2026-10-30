@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -13,6 +14,9 @@ import (
 var assets embed.FS
 
 func main() {
+	// Automatically grant camera and microphone permissions in WebView2 without prompts
+	_ = os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--use-fake-ui-for-media-stream --autoplay-policy=no-user-gesture-required")
+
 	app := NewApp()
 
 	err := wails.Run(&options.App{

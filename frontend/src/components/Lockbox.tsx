@@ -100,9 +100,7 @@ export const Lockbox: FC<LockboxProps> = ({
     try {
       const success = await WailsBridge.verifyOTP(fullOtp);
       if (success) {
-        setTimeout(() => {
-          onDisarmSuccess();
-        }, 350);
+        onDisarmSuccess();
       } else {
         const remaining = Math.max(0, attempts - 1);
         setAttempts(remaining);

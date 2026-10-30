@@ -337,11 +337,14 @@ func (a *App) DisarmSystem(passcode string) bool {
 	hook.DisableKeyboardBlocker()
 	audio.StopAlarm()
 
-	// Exit fullscreen & topmost
+	// Exit fullscreen & topmost and dismiss window back to background/tray
 	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, false)
 	wailsRuntime.WindowUnfullscreen(a.ctx)
+	wailsRuntime.WindowSetSize(a.ctx, 1024, 768)
+	wailsRuntime.WindowCenter(a.ctx)
+	wailsRuntime.WindowHide(a.ctx)
 
-	a.addLog("[DISARMED] Identity verified. SnoopTrap disarmed.")
+	a.addLog("[DISARMED] Identity verified. SnoopTrap disarmed and window dismissed to tray.")
 	wailsRuntime.EventsEmit(a.ctx, "status-change", "DISARMED")
 	return true
 }
