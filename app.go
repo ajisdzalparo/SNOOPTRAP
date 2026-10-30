@@ -162,7 +162,7 @@ func (a *App) DisarmSystem(passcode string) bool {
 	return true
 }
 
-// TriggerTrap initiates the lockbox trap
+// TriggerTrap initiates the lockbox trap with silent pre-alert recording
 func (a *App) TriggerTrap() {
 	a.mu.Lock()
 	if a.status == "TRIGGERED" {
@@ -174,28 +174,19 @@ func (a *App) TriggerTrap() {
 	currentOTP := a.currentOTP
 	a.mu.Unlock()
 
-	a.addLog("[BREACH] UNAUTHORIZED INPUT DETECTED! INITIATING TRAP.")
-	a.addLog("[SYSTEM] Locking UI to Fullscreen Kiosk Mode (HWND_TOPMOST)")
-	a.addLog("[HOOK] Low-level keyboard hook injected: WH_KEYBOARD_LL (Alt+Tab/WinKey blocked)")
-	a.addLog("[AUDIO] Overriding audio output to 100% volume with Cyber Siren")
+	a.addLog("[BREACH] UNAUTHORIZED INPUT DETECTED! INITIATING SILENT PRE-ALERT CAPTURE.")
+	a.addLog("[REC] Stealth camera & audio recording initiated before alert shock.")
 
-	// 1. Force window fullscreen and topmost
+	// 1. Show window
 	wailsRuntime.WindowShow(a.ctx)
 	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
-	wailsRuntime.WindowFullscreen(a.ctx)
 
-	// 2. Block keyboard navigation
-	hook.EnableKeyboardBlocker()
-
-	// 3. Play loud siren
-	go audio.PlayAlarmSiren()
-
-	// 4. Notify frontend to capture camera frame
+	// 2. Notify frontend to immediately capture photo & start video recording in background!
 	wailsRuntime.EventsEmit(a.ctx, "breach-triggered", map[string]interface{}{
 		"otp": currentOTP,
 	})
 
-	// Start telegram polling in case user types /nuke or /unlock
+	// 3. Start telegram polling immediately for inline button / unlock
 	pollCtx, cancel := context.WithCancel(context.Background())
 	a.cancelPoll = cancel
 	tg := telegram.NewClient(a.cfg.TelegramBotToken, a.cfg.TelegramChatID)
@@ -203,9 +194,24 @@ func (a *App) TriggerTrap() {
 		a.addLog("[REMOTE] Received /nuke command via Telegram! Executing nuclear action.")
 		failsafe.ExecuteNuclearOption(a.cfg.NuclearAction, a.cfg.TargetKillProcess)
 	}, func() {
-		a.addLog("[REMOTE] Received /unlock command via Telegram.")
+		a.addLog("[REMOTE] Received DISARM from Telegram button!")
 		a.DisarmSystem(currentOTP)
 	})
+
+	// 4. Grace Period: 5-second delayed siren (allows owner to disarm via Telegram button before shock)
+	go func() {
+		time.Sleep(5 * time.Second)
+		a.mu.RLock()
+		isStillTriggered := (a.status == "TRIGGERED")
+		a.mu.RUnlock()
+
+		if isStillTriggered {
+			a.addLog("[TRAP] 5-second grace expired without disarm. Engaging Kiosk Lock & Siren.")
+			wailsRuntime.WindowFullscreen(a.ctx)
+			hook.EnableKeyboardBlocker()
+			audio.PlayAlarmSiren()
+		}
+	}()
 }
 
 // ProcessIntruderCapture receives webcam frame from frontend and transmits to Telegram

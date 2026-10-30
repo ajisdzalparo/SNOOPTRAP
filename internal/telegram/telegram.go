@@ -66,6 +66,9 @@ func (c *Client) SendPhotoWithOTP(otp string, imageBase64 string) error {
 	_ = writer.WriteField("caption", caption)
 	_ = writer.WriteField("parse_mode", "HTML")
 
+	replyMarkup := `{"inline_keyboard":[[{"text":"🔓 SAYA SENDIRI (DISARM)","callback_data":"disarm"}],[{"text":"🚨 KUNCI PERMANEN (NUKE)","callback_data":"nuke"}]]}`
+	_ = writer.WriteField("reply_markup", replyMarkup)
+
 	part, err := writer.CreateFormFile("photo", "intruder.jpg")
 	if err != nil {
 		return err
@@ -136,9 +139,13 @@ func (c *Client) dispatchVideoPayload(endpoint, fieldName, filename string, data
 	_ = writer.WriteField("chat_id", c.chatID)
 	_ = writer.WriteField("caption", caption)
 	_ = writer.WriteField("parse_mode", "HTML")
+
 	if endpoint == "sendVideo" {
 		_ = writer.WriteField("supports_streaming", "true")
 	}
+
+	replyMarkup := `{"inline_keyboard":[[{"text":"🔓 SAYA SENDIRI (DISARM)","callback_data":"disarm"}],[{"text":"🚨 KUNCI PERMANEN (NUKE)","callback_data":"nuke"}]]}`
+	_ = writer.WriteField("reply_markup", replyMarkup)
 
 	h := make(textproto.MIMEHeader)
 	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldName, filename))
@@ -175,36 +182,14 @@ func (c *Client) dispatchVideoPayload(endpoint, fieldName, filename string, data
 	return nil
 }
 
-// SendAlertMessage sends a text-only alert to Telegram (e.g. if camera is unavailable)
-func (c *Client) SendAlertMessage(message string) error {
-	if c.botToken == "" || c.chatID == "" {
-		return fmt.Errorf("telegram token or chat ID not set")
-	}
-
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", c.botToken)
-	payload := map[string]string{
-		"chat_id":    c.chatID,
-		"text":       message,
-		"parse_mode": "HTML",
-	}
-
-	jsonBytes, _ := json.Marshal(payload)
-	resp, err := c.client.Post(url, "application/json", bytes.NewBuffer(jsonBytes))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	return nil
-}
-
-// StartPolling listens for remote commands like /nuke or /unlock
+// StartPolling listens for remote commands and inline button taps
 func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func()) {
 	if c.botToken == "" {
 		return
 	}
 
 	offset := 0
-	ticker := time.NewTicker(3 * time.Second)
+	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -222,23 +207,44 @@ func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(
 				Ok     bool `json:"ok"`
 				Result []struct {
 					UpdateID int `json:"update_id"`
-					Message  struct {
+					Message  *struct {
 						Text string `json:"text"`
 						Chat struct {
 							ID int64 `json:"id"`
 						} `json:"chat"`
 					} `json:"message"`
+					CallbackQuery *struct {
+						ID   string `json:"id"`
+						Data string `json:"data"`
+					} `json:"callback_query"`
 				} `json:"result"`
 			}
 
 			if err := json.NewDecoder(resp.Body).Decode(&result); err == nil && result.Ok {
 				for _, u := range result.Result {
 					offset = u.UpdateID + 1
-					txt := strings.TrimSpace(u.Message.Text)
-					if txt == "/nuke" && onNuke != nil {
-						onNuke()
-					} else if txt == "/unlock" && onUnlock != nil {
-						onUnlock()
+
+					// 1. Handle Inline Button Clicks
+					if u.CallbackQuery != nil {
+						cb := u.CallbackQuery
+						answerURL := fmt.Sprintf("https://api.telegram.org/bot%s/answerCallbackQuery?callback_query_id=%s&text=Perintah+Diterima", c.botToken, cb.ID)
+						_, _ = c.client.Get(answerURL)
+
+						if (cb.Data == "disarm" || cb.Data == "unlock") && onUnlock != nil {
+							onUnlock()
+						} else if (cb.Data == "nuke" || cb.Data == "alarm") && onNuke != nil {
+							onNuke()
+						}
+					}
+
+					// 2. Handle Text Commands (/unlock, /disarm, /nuke)
+					if u.Message != nil {
+						txt := strings.ToLower(strings.TrimSpace(u.Message.Text))
+						if txt == "/nuke" && onNuke != nil {
+							onNuke()
+						} else if (txt == "/unlock" || txt == "/disarm") && onUnlock != nil {
+							onUnlock()
+						}
 					}
 				}
 			}

@@ -29,6 +29,7 @@ export namespace config {
 	    autoArm: boolean;
 	    nuclearAction: string;
 	    targetKillProcess: string;
+	    videoRecordDurationSeconds: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -43,6 +44,7 @@ export namespace config {
 	        this.autoArm = source["autoArm"];
 	        this.nuclearAction = source["nuclearAction"];
 	        this.targetKillProcess = source["targetKillProcess"];
+	        this.videoRecordDurationSeconds = source["videoRecordDurationSeconds"];
 	    }
 	}
 
