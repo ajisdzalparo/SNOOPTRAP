@@ -15,6 +15,7 @@ type Config struct {
 	NuclearAction              string `json:"nuclearAction"` // "lock" or "taskkill"
 	TargetKillProcess          string `json:"targetKillProcess"`
 	VideoRecordDurationSeconds int    `json:"videoRecordDurationSeconds"`
+	EmergencyMasterPIN         string `json:"emergencyMasterPin"`
 }
 
 func DefaultConfig() *Config {
@@ -26,7 +27,8 @@ func DefaultConfig() *Config {
 		AutoArm:                    true,
 		NuclearAction:              "lock",
 		TargetKillProcess:          "WhatsApp.exe",
-		VideoRecordDurationSeconds: 120, // 2 minutes
+		VideoRecordDurationSeconds: 30, // 30 seconds surveillance video + audio
+		EmergencyMasterPIN:         "123456",
 	}
 }
 
@@ -90,4 +92,3 @@ func SaveConfig(cfg *Config) error {
 
 	return os.WriteFile(path, data, 0644)
 }
-

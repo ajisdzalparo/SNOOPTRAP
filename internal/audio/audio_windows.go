@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -34,13 +35,15 @@ const (
 	VK_VOLUME_MUTE = 0xAD
 )
 
-// MaximizeMasterVolume aggressively unmutes and maximizes system volume
+// MaximizeMasterVolume aggressively unmutes and maximizes system volume without flooding the message loop
 func MaximizeMasterVolume() {
-	// Send volume up signals to max out volume
-	for i := 0; i < 50; i++ {
-		procKeybd.Call(uintptr(VK_VOLUME_UP), 0, 0, 0)
-		procKeybd.Call(uintptr(VK_VOLUME_UP), 0, 2, 0) // KEYEVENTF_KEYUP
-	}
+	go func() {
+		for i := 0; i < 25; i++ {
+			procKeybd.Call(uintptr(VK_VOLUME_UP), 0, 0, 0)
+			procKeybd.Call(uintptr(VK_VOLUME_UP), 0, 2, 0) // KEYEVENTF_KEYUP
+			time.Sleep(3 * time.Millisecond)
+		}
+	}()
 }
 
 // GenerateSirenWav generates a high-urgency cyber siren WAV in memory

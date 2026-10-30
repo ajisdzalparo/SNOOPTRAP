@@ -9,6 +9,7 @@ export interface Config {
   nuclearAction: string;
   targetKillProcess: string;
   videoRecordDurationSeconds: number;
+  emergencyMasterPin?: string;
 }
 
 export interface AudioDevice {
@@ -43,6 +44,7 @@ declare global {
           TestTrap: () => Promise<void>;
           EmergencyLock: () => Promise<void>;
           StopAlarm: () => Promise<void>;
+          SetStreamRoomID: (room: string) => Promise<void>;
         };
       };
     };
@@ -163,6 +165,12 @@ export const WailsBridge = {
   async emergencyLock(): Promise<void> {
     if (window.go?.main?.App) {
       await window.go.main.App.EmergencyLock();
+    }
+  },
+
+  async setStreamRoomID(room: string): Promise<void> {
+    if (window.go?.main?.App?.SetStreamRoomID) {
+      await window.go.main.App.SetStreamRoomID(room);
     }
   },
 

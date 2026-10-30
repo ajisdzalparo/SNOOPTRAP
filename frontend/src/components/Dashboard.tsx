@@ -29,7 +29,8 @@ export const Dashboard: FC<DashboardProps> = ({ onTriggerTrap, logs }) => {
     autoArm: true,
     nuclearAction: 'lock',
     targetKillProcess: 'WhatsApp.exe',
-    videoRecordDurationSeconds: 120,
+    videoRecordDurationSeconds: 30,
+    emergencyMasterPin: '123456',
   });
 
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
@@ -338,17 +339,39 @@ export const Dashboard: FC<DashboardProps> = ({ onTriggerTrap, logs }) => {
                   type="number"
                   min={10}
                   max={300}
-                  value={config.videoRecordDurationSeconds || 120}
+                  value={config.videoRecordDurationSeconds || 30}
                   onChange={(e) =>
                     setConfig({
                       ...config,
-                      videoRecordDurationSeconds: parseInt(e.target.value) || 120,
+                      videoRecordDurationSeconds: parseInt(e.target.value) || 30,
                     })
                   }
                   className="w-full bg-[#050505] border border-[#333] p-3 text-xs text-white focus:border-[#FF003C] focus:outline-none"
                 />
                 <div className="text-[10px] text-[#8F8F8F]">
-                  Current: {config.videoRecordDurationSeconds || 120}s (2 minutes surveillance video + audio)
+                  Current: {config.videoRecordDurationSeconds || 30}s surveillance evidence (customizable: 15s - 300s)
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs text-[#8F8F8F]">
+                  EMERGENCY MASTER PIN (BACKUP PASSCODE)
+                </label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  placeholder="e.g. 123456 (6-digit custom PIN)"
+                  value={config.emergencyMasterPin || ''}
+                  onChange={(e) =>
+                    setConfig({
+                      ...config,
+                      emergencyMasterPin: e.target.value.replace(/[^0-9]/g, '').slice(0, 6),
+                    })
+                  }
+                  className="w-full bg-[#050505] border border-[#333] p-3 text-xs text-white focus:border-[#FF003C] focus:outline-none"
+                />
+                <div className="text-[10px] text-[#8F8F8F]">
+                  PIN 6 digit rahasia yang dapat Anda ubah sendiri untuk membuka kuncian darurat di layar laptop saat tidak ada HP/Telegram.
                 </div>
               </div>
 

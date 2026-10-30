@@ -5,9 +5,7 @@ import {
   Terminal,
   Lock,
   Volume2,
-  Camera,
   Radio,
-  User,
   Shield,
   AlertTriangle,
   RotateCcw,
@@ -19,22 +17,19 @@ interface LockboxProps {
   logs: string[];
 }
 
-export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
+export const Lockbox: FC<LockboxProps> = ({
+  onDisarmSuccess,
+  logs,
+}) => {
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
-  const [cameraStatus, setCameraStatus] = useState<string>('PHOTO_TRANSMITTED');
-  const [videoStatus, setVideoStatus] = useState<string>('REC_VIDEO_5S');
   const [attempts, setAttempts] = useState<number>(3);
   const [clock, setClock] = useState<string>('21:42:29.326');
   const [eventId] = useState<string>('#TRP-' + Math.floor(1000 + Math.random() * 9000) + '-X');
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const logsEndRef = useRef<HTMLDivElement>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const hasCapturedPhoto = useRef(false);
 
   // Live timestamp clock
   useEffect(() => {
@@ -51,161 +46,28 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
     inputRefs.current[0]?.focus();
   }, []);
 
+  // Secret Hotkey Listener: Ctrl + Alt + U directly in UI
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.ctrlKey && e.altKey && (e.key === 'u' || e.key === 'U' || e.code === 'KeyU')) {
+        e.preventDefault();
+        e.stopPropagation();
+        WailsBridge.disarmSystem('').then((success) => {
+          if (success) {
+            onDisarmSuccess();
+          }
+        });
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown, true);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown, true);
+  }, [onDisarmSuccess]);
+
   // Scroll logs
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
-
-  // Silent webcam & microphone capture + 5-second video recording
-  useEffect(() => {
-    let stream: MediaStream | null = null;
-    let timeoutId: any = null;
-
-    async function triggerSilentCapture() {
-      try {
-        setCameraStatus('ACQUIRING_STREAMS...');
-
-        // Attempt to capture both Video and Audio (Microphone)
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 1280, height: 720 },
-            audio: true,
-          });
-        } catch (audioErr) {
-          console.warn('Microphone unavailable, falling back to video-only:', audioErr);
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 1280, height: 720 },
-            audio: false,
-          });
-        }
-
-        if (videoRef.current && stream) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-
-          // 1. Instant Photo Snapshot (within 200ms) for immediate Telegram 2FA alert & OTP
-          setTimeout(() => {
-            if (hasCapturedPhoto.current) return;
-            if (videoRef.current && canvasRef.current) {
-              const video = videoRef.current;
-              const canvas = canvasRef.current;
-              canvas.width = 640;
-              canvas.height = 480;
-
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                hasCapturedPhoto.current = true;
-                ctx.drawImage(video, 0, 0, 640, 480);
-                const base64 = canvas.toDataURL('image/jpeg', 0.60);
-
-                WailsBridge.processIntruderCapture(base64)
-                  .then((ok) => {
-                    setCameraStatus(ok ? 'PHOTO_SENT' : 'PHOTO_FAILED');
-                  })
-                  .catch(() => setCameraStatus('NET_ERROR'));
-              }
-            }
-          }, 200);
-
-          // 2. Start Video + Audio Recorder (4 seconds of live footage)
-          try {
-            const recordedChunks: Blob[] = [];
-            let recorderOptions: MediaRecorderOptions = {};
-            if (typeof MediaRecorder.isTypeSupported === 'function') {
-              if (MediaRecorder.isTypeSupported('video/webm')) {
-                recorderOptions = { mimeType: 'video/webm' };
-              } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-                recorderOptions = { mimeType: 'video/mp4' };
-              }
-            }
-
-            const recorder = new MediaRecorder(stream, recorderOptions);
-            recorderRef.current = recorder;
-
-            recorder.ondataavailable = (e) => {
-              if (e.data && e.data.size > 0) {
-                recordedChunks.push(e.data);
-              }
-            };
-
-            recorder.onstop = () => {
-              if (recordedChunks.length > 0) {
-                setVideoStatus('UPLOADING_VIDEO...');
-                const blob = new Blob(recordedChunks, { type: recorderOptions.mimeType || 'video/webm' });
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                  const base64Video = reader.result as string;
-                  if (base64Video && base64Video.length > 100) {
-                    WailsBridge.processIntruderVideo(base64Video)
-                      .then((ok) => {
-                        setVideoStatus(ok ? 'VIDEO_SENT' : 'VIDEO_FAILED');
-                        if (stream) stream.getTracks().forEach((track) => track.stop());
-                      })
-                      .catch(() => {
-                        setVideoStatus('NET_ERROR');
-                        if (stream) stream.getTracks().forEach((track) => track.stop());
-                      });
-                  }
-                };
-                reader.readAsDataURL(blob);
-              } else {
-                if (stream) stream.getTracks().forEach((track) => track.stop());
-              }
-            };
-
-            recorder.start(200);
-            let secondsLeft = 120; // 2 minutes recording
-            const formatTime = (sec: number) => {
-              const m = Math.floor(sec / 60);
-              const s = sec % 60;
-              return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-            };
-            setVideoStatus(`REC [${formatTime(secondsLeft)} / 02:00]`);
-
-            const countTimer = setInterval(() => {
-              secondsLeft -= 1;
-              if (secondsLeft > 0) {
-                setVideoStatus(`REC [${formatTime(secondsLeft)} / 02:00]`);
-              } else {
-                clearInterval(countTimer);
-                setVideoStatus('FINALIZING_2MIN_VIDEO...');
-              }
-            }, 1000);
-
-            // Automatically stop recording after 2 minutes (120 seconds)
-            timeoutId = setTimeout(() => {
-              clearInterval(countTimer);
-              if (recorder.state === 'recording') {
-                recorder.stop();
-              }
-            }, 120 * 1000);
-          } catch (recErr) {
-            console.error('MediaRecorder initialization failed:', recErr);
-            setVideoStatus('RECORDER_ERR');
-          }
-        }
-      } catch (err) {
-        console.error('Media stream acquisition failed:', err);
-        setCameraStatus('LENS_BLOCKED');
-        setVideoStatus('STREAM_UNAVAILABLE');
-      }
-    }
-
-    triggerSilentCapture();
-
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (recorderRef.current && recorderRef.current.state === 'recording') {
-        try {
-          recorderRef.current.stop();
-        } catch {
-          // ignore
-        }
-      } else if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, []);
 
   const handleDigitChange = (idx: number, val: string) => {
     const char = val.slice(-1).replace(/[^0-9]/g, '');
@@ -238,13 +100,6 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
     try {
       const success = await WailsBridge.verifyOTP(fullOtp);
       if (success) {
-        if (recorderRef.current && recorderRef.current.state === 'recording') {
-          try {
-            recorderRef.current.stop();
-          } catch {
-            // ignore
-          }
-        }
         setTimeout(() => {
           onDisarmSuccess();
         }, 350);
@@ -269,10 +124,6 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-between bg-[#0a0a0ae0] backdrop-blur-xl text-white select-none font-mono">
-      {/* Hidden camera stream */}
-      <video ref={videoRef} autoPlay playsInline muted className="hidden" />
-      <canvas ref={canvasRef} className="hidden" />
-
       {/* TOP HUD BAR */}
       <header className="w-full h-10 border-b border-[#FF003C]/40 bg-[#050505]/90 flex items-center justify-between px-6 py-1 select-none text-[11px] font-mono tracking-widest">
         <div className="flex items-center gap-4">
@@ -285,21 +136,13 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
         </div>
 
         <div className="flex items-center gap-4">
-          <span className="flex items-center gap-1.5 text-[#00FF41]">
-            <Camera className="w-3 h-3" />
-            [{cameraStatus}]
-          </span>
-          <span className="flex items-center gap-1.5 text-[#FF003C]">
-            <span className="w-2 h-2 bg-[#FF003C] animate-ping" />
-            [{videoStatus}]
-          </span>
           <span className="text-[#00FF41] flex items-center gap-1.5">
             <Radio className="w-3 h-3 text-[#00FF41]" />
-            [TG_SYNC]
+            [DEFENSE_ENCLAVE_ACTIVE]
           </span>
           <span className="flex items-center gap-1.5 text-[#FF003C] animate-pulse">
             <span className="inline-block w-2 h-2 bg-[#FF003C] shadow-[0_0_8px_#FF003C]" />
-            [ARMED_BREACH]
+            [SYSTEM_QUARANTINE]
           </span>
         </div>
       </header>
@@ -364,29 +207,29 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
 
               <div className="mt-2 p-2 bg-[#101010] border border-[#222] text-xs text-[#8F8F8F] flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-[#FF003C] shrink-0" />
-                <span>SYSTEM UNDER TOTAL LOCKDOWN. Facial vector telemetry dispatched to Administrator Telegram node.</span>
+                <span>SYSTEM UNDER TOTAL LOCKDOWN. Authorization required to resume workstation access.</span>
               </div>
             </div>
 
-            {/* Midsection: Viewfinder & Telemetry Forensics */}
+            {/* Midsection: Security Enclave Matrix & Telemetry */}
             <div className="grid grid-cols-12 gap-4">
-              {/* Camera Viewfinder */}
+              {/* Security Shield Terminal Enclave */}
               <div className="col-span-5 bg-[#080808] border border-[#222] p-3 flex flex-col justify-between">
                 <div className="flex items-center justify-between text-[10px] text-[#FF003C]">
                   <span className="flex items-center gap-1 font-bold">
                     <span className="w-1.5 h-1.5 bg-[#FF003C] animate-pulse" />
-                    REC: LIVE_FEED
+                    SECURITY_ENCLAVE: ACTIVE
                   </span>
-                  <span className="text-[#00FF41]">[SYNCD]</span>
+                  <span className="text-[#00FF41]">[LOCKED]</span>
                 </div>
 
                 <div className="relative w-full h-32 bg-[#0c0c0c] my-2 flex items-center justify-center overflow-hidden border border-[#1a1a1a]">
                   <div className="flex flex-col items-center justify-center text-center">
                     <div className="p-2 border border-[#FF003C]/40 bg-[#FF003C]/10 mb-1">
-                      <User className="w-8 h-8 text-[#FF003C]" />
+                      <Lock className="w-8 h-8 text-[#FF003C]" />
                     </div>
-                    <span className="text-[10px] font-bold text-[#FF003C]">MATCH: UNKNOWN</span>
-                    <span className="text-[9px] text-[#00FF41]">CONF: 99.84%</span>
+                    <span className="text-[10px] font-bold text-[#FF003C]">ENCLAVE_STATE: ISOLATED</span>
+                    <span className="text-[9px] text-[#00FF41]">CIPHER: AES-256_GCM</span>
                   </div>
 
                   {/* Scanning beam */}
@@ -394,8 +237,8 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
                 </div>
 
                 <div className="flex items-center justify-between text-[10px] text-[#8F8F8F]">
-                  <span>RES: 1080P_RAW</span>
-                  <span className="text-[#00FF41]">DISPATCH_OK</span>
+                  <span>PROTECTION: HARDENED</span>
+                  <span className="text-[#00FF41]">ENFORCED</span>
                 </div>
               </div>
 
@@ -404,31 +247,31 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
                 <div className="space-y-1.5 text-[#8F8F8F]">
                   <div className="text-white font-bold text-xs flex items-center gap-1 border-b border-[#222] pb-1">
                     <Shield className="w-3.5 h-3.5 text-[#00FF41]" />
-                    TELEMETRY_FORENSICS_PAYLOAD
+                    SECURITY_QUARANTINE_METRICS
                   </div>
                   <div className="flex justify-between pt-1">
                     <span>INTRUSION_VECTOR:</span>
                     <span className="text-[#FF003C] font-bold">PHYSICAL_HUMAN_INPUT</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>AUDIO_BLAST_RMS:</span>
-                    <span className="text-[#FF003C] font-bold">+6.0 dBFS (OVERDRIVE)</span>
+                    <span>ALARM_OVERRIDE:</span>
+                    <span className="text-[#FF003C] font-bold">+6.0 dBFS (ENGAGED)</span>
                   </div>
                   <div className="flex justify-between">
                     <span>HOST_QUARANTINE:</span>
                     <span className="text-[#00FF41]">KBD_LOCKED / TOPMOST</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>MIC_AUDIO_CAPTURE:</span>
-                    <span className="text-[#00FF41]">OPUS_CODEC_ACTIVE</span>
+                    <span>INTEGRITY_CHECK:</span>
+                    <span className="text-[#00FF41]">SYSTEM_INTEGRITY_VERIFIED</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>VIDEO_RECORDER:</span>
-                    <span className="text-[#FF003C] font-bold">{videoStatus}</span>
+                    <span>ADMIN_NODE:</span>
+                    <span className="text-[#00FF41]">REMOTE_SYNCHRONIZED</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>SEC_NOTIFICATION:</span>
-                    <span className="text-[#00FF41]">TG_BOT API MULTIPART</span>
+                    <span>FAILSAFE_STATUS:</span>
+                    <span className="text-[#FF003C] font-bold">ARMED</span>
                   </div>
                 </div>
 

@@ -13,7 +13,9 @@ import (
 	"snooptrap/internal/failsafe"
 	"snooptrap/internal/hook"
 	"snooptrap/internal/idle"
+	"snooptrap/internal/stream"
 	"snooptrap/internal/telegram"
+	"snooptrap/internal/tray"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -27,13 +29,16 @@ type SystemStatus struct {
 
 // App struct
 type App struct {
-	ctx        context.Context
-	cfg        *config.Config
-	status     string // "DISARMED", "ARMED", "TRIGGERED"
-	currentOTP string
-	logs       []string
-	mu         sync.RWMutex
-	cancelPoll context.CancelFunc
+	ctx                context.Context
+	cfg                *config.Config
+	status             string // "DISARMED", "ARMED", "TRIGGERED"
+	currentOTP         string
+	logs               []string
+	mu                 sync.RWMutex
+	cancelPoll         context.CancelFunc
+	armedAt            time.Time
+	lastInputTickAtArm uint32
+	isQuitting         bool
 }
 
 // NewApp creates a new App application struct
@@ -68,8 +73,101 @@ func (a *App) startup(ctx context.Context) {
 	})
 	hook.InstallHook()
 
+	// Initialize System Tray Icon (Show hidden icons)
+	tray.InitTray(tray.TrayCallbacks{
+		OnShow: func() {
+			if a.ctx != nil {
+				wailsRuntime.WindowShow(a.ctx)
+				wailsRuntime.WindowUnminimise(a.ctx)
+			}
+		},
+		OnArm: func() {
+			a.ArmSystem()
+		},
+		OnDisarm: func() {
+			a.DisarmSystem("")
+		},
+		OnQuit: func() {
+			a.mu.Lock()
+			a.isQuitting = true
+			a.mu.Unlock()
+			tray.RemoveTray()
+			if a.ctx != nil {
+				wailsRuntime.Quit(a.ctx)
+			}
+		},
+	})
+
 	// Start background idle monitoring
 	go a.startIdleMonitor()
+
+	// Start local streaming viewer server
+	go stream.StartStreamServer()
+
+	// Start persistent Telegram remote listener (allows instant /arm, /disarm, VN broadcast anytime)
+	go a.ensureTelegramListener()
+}
+
+func (a *App) ensureTelegramListener() {
+	a.mu.Lock()
+	if a.cancelPoll != nil {
+		a.mu.Unlock()
+		return
+	}
+	pollCtx, cancel := context.WithCancel(context.Background())
+	a.cancelPoll = cancel
+	botToken := a.cfg.TelegramBotToken
+	chatID := a.cfg.TelegramChatID
+	a.mu.Unlock()
+
+	if botToken == "" || chatID == "" {
+		return
+	}
+
+	tg := telegram.NewClient(botToken, chatID)
+	go tg.StartPolling(
+		pollCtx,
+		func() {
+			a.addLog("[REMOTE] Received nuke command via Telegram.")
+			failsafe.ExecuteNuclearOption(a.cfg.NuclearAction, a.cfg.TargetKillProcess)
+		},
+		func() {
+			a.addLog("[REMOTE] Received DISARM from Telegram button/command!")
+			a.DisarmSystem("")
+		},
+		func(audioBase64 string, mimeType string) {
+			a.PlayRemoteVoice(audioBase64, mimeType)
+		},
+		func() {
+			a.addLog("[REMOTE] Received /arm from Telegram! Arming system immediately.")
+			a.ArmSystem()
+		},
+		func() string {
+			a.mu.RLock()
+			st := a.status
+			otp := a.currentOTP
+			a.mu.RUnlock()
+			dur, _ := idle.GetIdleDuration()
+			otpInfo := ""
+			if st == "TRIGGERED" && otp != "" {
+				otpInfo = fmt.Sprintf("\n• OTP Aktif: <code>%s</code>", otp)
+			}
+			return fmt.Sprintf("• Mode: <b>%s</b>\n• Idle Komputer: %d detik\n• Status Kuncian: %s%s", st, int(dur.Seconds()), map[bool]string{true: "Terkunci (Breach)", false: "Normal"}[st == "TRIGGERED"], otpInfo)
+		},
+		func() string {
+			return a.GetStreamURL()
+		},
+	)
+}
+
+func (a *App) restartTelegramListener() {
+	a.mu.Lock()
+	if a.cancelPoll != nil {
+		a.cancelPoll()
+		a.cancelPoll = nil
+	}
+	a.mu.Unlock()
+	a.ensureTelegramListener()
 }
 
 func (a *App) addLog(msg string) {
@@ -89,8 +187,8 @@ func (a *App) addLog(msg string) {
 		if err == nil {
 			f, err := os.OpenFile(filepath.Join(dir, "snooptrap.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 			if err == nil {
-				defer f.Close()
-				f.WriteString(line + "\n")
+				_, _ = f.WriteString(line + "\n")
+				_ = f.Close()
 			}
 		}
 	}(entry)
@@ -101,7 +199,7 @@ func (a *App) addLog(msg string) {
 }
 
 func (a *App) startIdleMonitor() {
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(400 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -119,16 +217,34 @@ func (a *App) startIdleMonitor() {
 			currentState := a.status
 			threshold := a.cfg.IdleThresholdSeconds
 			autoArm := a.cfg.AutoArm
+			armedAt := a.armedAt
+			lastTickAtArm := a.lastInputTickAtArm
 			a.mu.RUnlock()
 
-			// Check auto arm
+			// 1. Check auto arm when disarmed and idle long enough
 			if autoArm && currentState == "DISARMED" && idleSecs >= threshold {
 				a.ArmSystem()
+				continue
 			}
 
-			// If system is Armed and someone touches mouse/keyboard (idleSecs drops to 0)
-			if currentState == "ARMED" && idleSecs < 1 {
-				a.TriggerTrap()
+			// 2. If system is Armed, monitor for unauthorized mouse movement or key press
+			if currentState == "ARMED" {
+				// Stabilization: 4 seconds grace to allow the owner to remove their hand from the mouse without triggering breach
+				if time.Since(armedAt) < 4*time.Second {
+					currentTick, err := idle.GetLastInputTick()
+					if err == nil {
+						a.mu.Lock()
+						a.lastInputTickAtArm = currentTick
+						a.mu.Unlock()
+					}
+					continue
+				}
+
+				// System is HOT! A breach occurs ONLY when a NEW input event is detected
+				currentTick, err := idle.GetLastInputTick()
+				if err == nil && currentTick != lastTickAtArm && idleSecs < 2 {
+					a.TriggerTrap()
+				}
 			}
 		}
 	}
@@ -138,33 +254,27 @@ func (a *App) startIdleMonitor() {
 func (a *App) ArmSystem() {
 	a.mu.Lock()
 	a.status = "ARMED"
+	a.armedAt = time.Now()
+	tick, _ := idle.GetLastInputTick()
+	a.lastInputTickAtArm = tick
 	botToken := a.cfg.TelegramBotToken
 	chatID := a.cfg.TelegramChatID
 	a.mu.Unlock()
 
-	a.addLog("[ARMED] Guardian trap is now active. Any input will trigger lockdown.")
+	a.addLog("[ARMED] Guardian trap is now active. Guarding laptop...")
 	wailsRuntime.EventsEmit(a.ctx, "status-change", "ARMED")
 
-	// Start telegram polling in background while armed
-	if a.cancelPoll != nil {
-		a.cancelPoll()
-	}
-	pollCtx, cancel := context.WithCancel(context.Background())
-	a.cancelPoll = cancel
-	tg := telegram.NewClient(botToken, chatID)
-	go tg.StartPolling(pollCtx, func() {
-		a.addLog("[REMOTE] Received nuke command via Telegram.")
-		failsafe.ExecuteNuclearOption(a.cfg.NuclearAction, a.cfg.TargetKillProcess)
-	}, func() {
-		a.addLog("[REMOTE] Received DISARM from Telegram button!")
-		a.DisarmSystem("")
-	})
+	// Ensure background telegram listener is running
+	a.ensureTelegramListener()
 
 	// Send notification message to Telegram with interactive button
-	go func() {
-		msg := "🛡️ <b>SnoopTrap Siaga: Laptop Anda sedang dijaga.</b>\n<i>(Belum ada yang menyentuh laptop).</i>\n\nSaat Anda mau kembali ke meja, tap tombol di bawah ini agar laptop bisa langsung dipakai tanpa alarm:"
-		_ = tg.SendMessageWithInlineButton(msg, "🔓 SAYA SUDAH KEMBALI (DISARM)", "disarm")
-	}()
+	if botToken != "" && chatID != "" {
+		go func() {
+			tg := telegram.NewClient(botToken, chatID)
+			msg := "🛡️ <b>SnoopTrap Siaga: Laptop Anda sedang dijaga.</b>\n<i>(Belum ada yang menyentuh laptop).</i>\n\nSaat Anda mau kembali ke meja, tap tombol di bawah ini agar laptop bisa langsung dipakai tanpa alarm:"
+			_ = tg.SendMessageWithInlineButton(msg, "🔓 SAYA SUDAH KEMBALI (DISARM)", "disarm")
+		}()
+	}
 }
 
 // DisarmSystem disarms the trap
@@ -172,8 +282,14 @@ func (a *App) DisarmSystem(passcode string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	masterPIN := a.cfg.EmergencyMasterPIN
+	if masterPIN == "" {
+		masterPIN = "123456"
+	}
+
 	// In disarmed mode or verified OTP
-	if a.status == "TRIGGERED" && passcode != a.currentOTP && passcode != "888888" {
+	// If passcode is empty (disarmed via Ctrl+Alt+U or Telegram button), or matches dynamic OTP, or matches user-configured Emergency Master PIN
+	if a.status == "TRIGGERED" && passcode != "" && passcode != a.currentOTP && passcode != masterPIN {
 		a.addLog(fmt.Sprintf("[AUTH] Invalid OTP attempt: %s", passcode))
 		return false
 	}
@@ -202,33 +318,37 @@ func (a *App) TriggerTrap() {
 	a.status = "TRIGGERED"
 	a.currentOTP = telegram.GenerateOTP()
 	currentOTP := a.currentOTP
+	botToken := a.cfg.TelegramBotToken
+	chatID := a.cfg.TelegramChatID
 	a.mu.Unlock()
 
 	a.addLog("[BREACH] UNAUTHORIZED INPUT DETECTED! INITIATING SILENT PRE-ALERT CAPTURE.")
 	a.addLog("[REC] Stealth camera & audio recording initiated before alert shock.")
 
-	// 1. Show window
+	// 1. Immediately trap the intruder: Fullscreen, AlwaysOnTop, and BLOCK Windows key / Alt+Tab
 	wailsRuntime.WindowShow(a.ctx)
+	wailsRuntime.WindowFullscreen(a.ctx)
 	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
+	hook.EnableKeyboardBlocker()
 
-	// 2. Notify frontend to immediately capture photo & start video recording in background!
+	// 2. IMMEDIATELY send Telegram alert with OTP (do NOT wait for webcam!)
+	if botToken != "" && chatID != "" {
+		go func(otp string) {
+			tg := telegram.NewClient(botToken, chatID)
+			msg := fmt.Sprintf("🚨 <b>PERINGATAN PENYUSUP (BREACH DETECTED)!</b>\n\nMouse atau keyboard laptop Anda baru saja disentuh!\n\n🔑 <b>KODE OTP PEMBUKA:</b> <code>%s</code>\n\nMasukkan 6 digit angka di atas pada layar laptop, atau tap tombol di bawah:", otp)
+			_ = tg.SendMessageWithInlineButton(msg, "🔓 SAYA SENDIRI (DISARM)", "disarm")
+		}(currentOTP)
+	}
+
+	// 3. Notify frontend to immediately capture photo & start video recording in background!
 	wailsRuntime.EventsEmit(a.ctx, "breach-triggered", map[string]interface{}{
 		"otp": currentOTP,
 	})
 
-	// 3. Start telegram polling immediately for inline button / unlock
-	pollCtx, cancel := context.WithCancel(context.Background())
-	a.cancelPoll = cancel
-	tg := telegram.NewClient(a.cfg.TelegramBotToken, a.cfg.TelegramChatID)
-	go tg.StartPolling(pollCtx, func() {
-		a.addLog("[REMOTE] Received /nuke command via Telegram! Executing nuclear action.")
-		failsafe.ExecuteNuclearOption(a.cfg.NuclearAction, a.cfg.TargetKillProcess)
-	}, func() {
-		a.addLog("[REMOTE] Received DISARM from Telegram button!")
-		a.DisarmSystem(currentOTP)
-	})
+	// 4. Ensure telegram polling is active for remote commands / buttons
+	a.ensureTelegramListener()
 
-	// 4. Grace Period: 5-second delayed siren (allows owner to disarm via Telegram button before shock)
+	// 5. Grace Period: 5-second delayed siren (allows owner to disarm silently via Telegram button or Ctrl+Alt+U)
 	go func() {
 		time.Sleep(5 * time.Second)
 		a.mu.RLock()
@@ -236,9 +356,7 @@ func (a *App) TriggerTrap() {
 		a.mu.RUnlock()
 
 		if isStillTriggered {
-			a.addLog("[TRAP] 5-second grace expired without disarm. Engaging Kiosk Lock & Siren.")
-			wailsRuntime.WindowFullscreen(a.ctx)
-			hook.EnableKeyboardBlocker()
+			a.addLog("[TRAP] 5-second grace expired without disarm. Engaging Siren.")
 			audio.PlayAlarmSiren()
 		}
 	}()
@@ -262,7 +380,7 @@ func (a *App) ProcessIntruderCapture(base64Image string) bool {
 		return false
 	}
 
-	a.addLog("[NET] Telegram alert & OTP transmitted successfully!")
+	a.addLog("[NET] Telegram alert & photo transmitted successfully!")
 	return true
 }
 
@@ -303,7 +421,9 @@ func (a *App) SaveConfig(newCfg config.Config) error {
 	a.mu.Unlock()
 
 	a.addLog("[CONFIG] Preferences updated and persisted to AppData/Roaming/SnoopTrap/config.json")
-	return config.SaveConfig(&newCfg)
+	err := config.SaveConfig(&newCfg)
+	a.restartTelegramListener()
+	return err
 }
 
 // GetAudioDevices returns sound devices
@@ -344,14 +464,26 @@ func (a *App) TestTrap() {
 // beforeClose is called when the user attempts to close the window
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 	a.mu.RLock()
-	defer a.mu.RUnlock()
+	isTriggered := (a.status == "TRIGGERED")
+	quitting := a.isQuitting
+	a.mu.RUnlock()
 
-	// If system is TRIGGERED or ARMED, prevent closing the window
-	if a.status == "TRIGGERED" {
+	// If system is in Lockdown (TRIGGERED), block closing the window completely!
+	if isTriggered {
 		a.addLog("[SECURITY] Close window attempt blocked. SnoopTrap is in Lockdown!")
 		return true // Prevent close!
 	}
-	return false
+
+	// If explicit quit requested from Tray menu, allow exit
+	if quitting {
+		tray.RemoveTray()
+		return false
+	}
+
+	// Normal close ('X'): Hide window to System Tray (Show hidden icons)
+	wailsRuntime.WindowHide(a.ctx)
+	a.addLog("[SYSTEM] Window minimized to background/tray. SnoopTrap guardian active.")
+	return true // Prevent process exit so it continues running in background
 }
 
 // EmergencyLock triggers Windows Lock Screen immediately
@@ -365,3 +497,29 @@ func (a *App) StopAlarm() {
 	audio.StopAlarm()
 }
 
+// PlayRemoteVoice broadcasts audio / voice note received from Telegram directly through laptop speakers
+func (a *App) PlayRemoteVoice(audioBase64 string, mimeType string) {
+	a.addLog(fmt.Sprintf("[MEGAPHONE] Remote voice note received from Telegram (type: %s)! Maximizing volume...", mimeType))
+	audio.MaximizeMasterVolume()
+	wailsRuntime.EventsEmit(a.ctx, "play-remote-audio", map[string]string{
+		"audio": audioBase64,
+		"mime":  mimeType,
+	})
+}
+
+// SetStreamRoomID updates the active WebRTC stream room ID
+func (a *App) SetStreamRoomID(room string) {
+	stream.SetCurrentRoomID(room)
+}
+
+// GetStreamURL returns the live streaming URL
+func (a *App) GetStreamURL() string {
+	room := stream.GetCurrentRoomID()
+	if room == "" {
+		room = fmt.Sprintf("snoop-%d", time.Now().Unix()%1000000)
+		stream.SetCurrentRoomID(room)
+		wailsRuntime.EventsEmit(a.ctx, "start-stream-feed", room)
+	}
+	ip := stream.GetLocalIP()
+	return fmt.Sprintf("http://%s:8765/stream?room=%s", ip, room)
+}

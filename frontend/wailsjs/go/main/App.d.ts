@@ -18,11 +18,17 @@ export function GetLogs():Promise<Array<string>>;
 
 export function GetStatus():Promise<main.SystemStatus>;
 
+export function GetStreamURL():Promise<string>;
+
+export function PlayRemoteVoice(arg1:string,arg2:string):Promise<void>;
+
 export function ProcessIntruderCapture(arg1:string):Promise<boolean>;
 
 export function ProcessIntruderVideo(arg1:string):Promise<boolean>;
 
 export function SaveConfig(arg1:config.Config):Promise<void>;
+
+export function SetStreamRoomID(arg1:string):Promise<void>;
 
 export function StopAlarm():Promise<void>;
 

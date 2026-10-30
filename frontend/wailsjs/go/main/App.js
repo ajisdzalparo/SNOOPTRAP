@@ -30,6 +30,14 @@ export function GetStatus() {
   return window['go']['main']['App']['GetStatus']();
 }
 
+export function GetStreamURL() {
+  return window['go']['main']['App']['GetStreamURL']();
+}
+
+export function PlayRemoteVoice(arg1, arg2) {
+  return window['go']['main']['App']['PlayRemoteVoice'](arg1, arg2);
+}
+
 export function ProcessIntruderCapture(arg1) {
   return window['go']['main']['App']['ProcessIntruderCapture'](arg1);
 }
@@ -40,6 +48,10 @@ export function ProcessIntruderVideo(arg1) {
 
 export function SaveConfig(arg1) {
   return window['go']['main']['App']['SaveConfig'](arg1);
+}
+
+export function SetStreamRoomID(arg1) {
+  return window['go']['main']['App']['SetStreamRoomID'](arg1);
 }
 
 export function StopAlarm() {
