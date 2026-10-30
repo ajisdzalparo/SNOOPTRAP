@@ -1,0 +1,11 @@
+services:
+  snooptrap-stream:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: snooptrap-stream
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080

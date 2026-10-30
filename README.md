@@ -72,9 +72,32 @@ SNOOPTRAP/
 wails dev
 ```
 
-### Build Binary Eksekutabel Mandiri:
+### Build Binary Eksekutabel Mandiri (Windows Client):
 ```powershell
 wails build
 ```
 Hasil file biner eksekutabel berada di: `build/bin/snooptrap.exe`.
+
+---
+
+## 🌐 Deploy VPS Relay Streaming (Docker)
+
+Hanya modul **Relay Streaming** (`relay-service`) yang dibangun ke dalam Docker. Client desktop SnoopTrap tetap berjalan secara native di Windows.
+
+### Jalankan di VPS:
+```bash
+# Clone repository di VPS
+git clone https://github.com/ajisdzalparo/SNOOPTRAP.git
+cd SNOOPTRAP
+
+# Jalankan via Docker Compose
+docker compose up -d --build
+
+# ATAU via Docker langsung:
+docker build -t snooptrap-stream .
+docker run -d --name snooptrap-stream -p 8080:8080 --restart always snooptrap-stream
+```
+
+Setelah itu, masukkan **IP VPS** dan **Port 8080** di menu Settings aplikasi SnoopTrap laptop Anda. Link `/stream` Telegram akan langsung bisa dibuka dari jaringan manapun di seluruh dunia!
+
 

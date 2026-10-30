@@ -30,6 +30,10 @@ export namespace config {
 	    nuclearAction: string;
 	    targetKillProcess: string;
 	    videoRecordDurationSeconds: number;
+	    emergencyMasterPin: string;
+	    streamServerHost: string;
+	    streamServerPort: string;
+	    streamRelayServerUrl: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -45,6 +49,10 @@ export namespace config {
 	        this.nuclearAction = source["nuclearAction"];
 	        this.targetKillProcess = source["targetKillProcess"];
 	        this.videoRecordDurationSeconds = source["videoRecordDurationSeconds"];
+	        this.emergencyMasterPin = source["emergencyMasterPin"];
+	        this.streamServerHost = source["streamServerHost"];
+	        this.streamServerPort = source["streamServerPort"];
+	        this.streamRelayServerUrl = source["streamRelayServerUrl"];
 	    }
 	}
 

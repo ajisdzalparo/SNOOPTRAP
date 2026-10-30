@@ -566,7 +566,25 @@ func (a *App) GetStreamURL() string {
 	a.mu.RLock()
 	relayURL := ""
 	if a.cfg != nil {
-		relayURL = a.cfg.StreamRelayServerURL
+		if strings.TrimSpace(a.cfg.StreamServerHost) != "" {
+			host := strings.TrimSpace(a.cfg.StreamServerHost)
+			port := strings.TrimSpace(a.cfg.StreamServerPort)
+			if port == "" {
+				port = "8080"
+			}
+			scheme := "http://"
+			if strings.HasPrefix(host, "http://") || strings.HasPrefix(host, "https://") {
+				scheme = ""
+			}
+			// If host already contains port, don't duplicate
+			if strings.Contains(strings.TrimPrefix(strings.TrimPrefix(host, "http://"), "https://"), ":") {
+				relayURL = fmt.Sprintf("%s%s", scheme, host)
+			} else {
+				relayURL = fmt.Sprintf("%s%s:%s", scheme, host, port)
+			}
+		} else if strings.TrimSpace(a.cfg.StreamRelayServerURL) != "" {
+			relayURL = strings.TrimSpace(a.cfg.StreamRelayServerURL)
+		}
 	}
 	a.mu.RUnlock()
 

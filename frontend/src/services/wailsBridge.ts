@@ -10,6 +10,8 @@ export interface Config {
   targetKillProcess: string;
   videoRecordDurationSeconds: number;
   emergencyMasterPin?: string;
+  streamServerHost?: string;
+  streamServerPort?: string;
   streamRelayServerUrl?: string;
 }
 
