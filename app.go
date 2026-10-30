@@ -410,6 +410,7 @@ func (a *App) DisarmSystem(passcode string) bool {
 	audio.StopAlarm()
 
 	// Exit fullscreen & topmost and dismiss window back to background/tray
+	failsafe.RestoreNormalWindow()
 	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, false)
 	wailsRuntime.WindowUnfullscreen(a.ctx)
 	wailsRuntime.WindowSetSize(a.ctx, 1024, 768)
@@ -440,12 +441,12 @@ func (a *App) TriggerTrap() {
 
 	// 1. Immediately trap the intruder: Fullscreen, AlwaysOnTop, and BLOCK Windows key / Alt+Tab
 	wailsRuntime.WindowShow(a.ctx)
-	wailsRuntime.WindowFullscreen(a.ctx)
 	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
+	wailsRuntime.WindowFullscreen(a.ctx)
 	hook.EnableKeyboardBlocker()
 
-	// Win32 Force Foreground: overrides Windows focus lock and maximizes to full primary screen bounds
-	failsafe.ForceBringToFront("SnoopTrap // IntruderLens")
+	// Win32 Force Foreground & 100% Screen-Coverage over all apps/taskbar
+	failsafe.ForceFullscreenLockbox()
 
 	// Consistent WebRTC stream room & URL
 	roomID := a.GetStreamRoomID()

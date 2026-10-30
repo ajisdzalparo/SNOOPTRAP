@@ -21,22 +21,62 @@ var (
 	procAttachThreadInput        = user32.NewProc("AttachThreadInput")
 	procGetWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
 	procGetSystemMetrics         = user32.NewProc("GetSystemMetrics")
+	procEnumWindows              = user32.NewProc("EnumWindows")
+	procIsWindowVisible          = user32.NewProc("IsWindowVisible")
+	procGetWindowLongW           = user32.NewProc("GetWindowLongW")
+	procSetWindowLongW           = user32.NewProc("SetWindowLongW")
+	procGetCurrentProcessId      = kernel32.NewProc("GetCurrentProcessId")
 	procGetCurrentThreadId       = kernel32.NewProc("GetCurrentThreadId")
 )
 
-// ForceBringToFront forces the specified window to the topmost foreground, overriding Windows focus locks
-func ForceBringToFront(windowTitle string) {
-	ptr, err := syscall.UTF16PtrFromString(windowTitle)
-	if err != nil {
-		return
-	}
-	hwnd, _, _ := procFindWindowW.Call(0, uintptr(unsafe.Pointer(ptr)))
+// GetAppWindowHWND discovers our own application top-level window by Process ID
+func GetAppWindowHWND() uintptr {
+	var appHwnd uintptr
+	curPid, _, _ := procGetCurrentProcessId.Call()
+
+	cb := syscall.NewCallback(func(hwnd uintptr, lParam uintptr) uintptr {
+		var pid uint32
+		procGetWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
+		if uintptr(pid) == curPid {
+			vis, _, _ := procIsWindowVisible.Call(hwnd)
+			if vis != 0 {
+				appHwnd = hwnd
+				return 0 // found target window, stop enumeration
+			}
+		}
+		return 1 // continue searching
+	})
+
+	procEnumWindows.Call(cb, 0)
+	return appHwnd
+}
+
+// ForceFullscreenLockbox locks the entire monitor screen covering 100% of the display and topmost over everything
+func ForceFullscreenLockbox() {
+	hwnd := GetAppWindowHWND()
 	if hwnd == 0 {
-		return
+		// Fallback to title lookup if EnumWindows hasn't settled yet
+		ptr, _ := syscall.UTF16PtrFromString("SnoopTrap // IntruderLens")
+		hwnd, _, _ = procFindWindowW.Call(0, uintptr(unsafe.Pointer(ptr)))
+		if hwnd == 0 {
+			return
+		}
 	}
 
-	// 1. Maximize window
-	procShowWindow.Call(hwnd, 3) // SW_SHOWMAXIMIZED
+	cx, _, _ := procGetSystemMetrics.Call(0) // SM_CXSCREEN
+	cy, _, _ := procGetSystemMetrics.Call(1) // SM_CYSCREEN
+	if cx == 0 {
+		cx = 1920
+	}
+	if cy == 0 {
+		cy = 1080
+	}
+
+	// 1. Remove title bar and resizing borders (WS_CAPTION | WS_THICKFRAME) so it's a seamless edge-to-edge lock screen
+	// GWL_STYLE = -16
+	oldStyle, _, _ := procGetWindowLongW.Call(hwnd, ^uintptr(15)) // -16
+	newStyle := oldStyle &^ (0x00C00000 | 0x00040000)
+	procSetWindowLongW.Call(hwnd, ^uintptr(15), newStyle)
 
 	// 2. Attach thread input to current foreground window to bypass Windows focus lock
 	fgHwnd, _, _ := procGetForegroundWindow.Call()
@@ -51,19 +91,31 @@ func ForceBringToFront(windowTitle string) {
 		}
 	}
 
-	// 3. HWND_TOPMOST (-1) covering entire primary screen resolution
-	cx, _, _ := procGetSystemMetrics.Call(0) // SM_CXSCREEN
-	cy, _, _ := procGetSystemMetrics.Call(1) // SM_CYSCREEN
-	if cx == 0 {
-		cx = 1920
-	}
-	if cy == 0 {
-		cy = 1080
-	}
-	procSetWindowPos.Call(hwnd, ^uintptr(0), 0, 0, cx, cy, 0x0040) // SWP_SHOWWINDOW
+	// 3. HWND_TOPMOST (-1) covering 100% of the primary display at (0, 0, cx, cy)
+	// SWP_SHOWWINDOW (0x0040) | SWP_FRAMECHANGED (0x0020)
+	procSetWindowPos.Call(hwnd, ^uintptr(0), 0, 0, cx, cy, 0x0040|0x0020)
+	procShowWindow.Call(hwnd, 3) // SW_SHOWMAXIMIZED
 	procBringWindowToTop.Call(hwnd)
 	procSetForegroundWindow.Call(hwnd)
 	procSwitchToThisWindow.Call(hwnd, 1)
+}
+
+// ForceBringToFront maintains compatibility with caller
+func ForceBringToFront(windowTitle string) {
+	ForceFullscreenLockbox()
+}
+
+// RestoreNormalWindow restores standard window borders and position when disarmed
+func RestoreNormalWindow() {
+	hwnd := GetAppWindowHWND()
+	if hwnd == 0 {
+		return
+	}
+	// Restore standard overlapped window style: WS_OVERLAPPEDWINDOW (0x00CF0000)
+	oldStyle, _, _ := procGetWindowLongW.Call(hwnd, ^uintptr(15))
+	newStyle := oldStyle | 0x00CF0000
+	procSetWindowLongW.Call(hwnd, ^uintptr(15), newStyle)
+	procShowWindow.Call(hwnd, 9) // SW_RESTORE
 }
 
 // LockWindows executes Windows native LockScreen immediately

@@ -28,7 +28,7 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 5, G: 5, B: 5, A: 240},
+		BackgroundColour: &options.RGBA{R: 5, G: 5, B: 5, A: 255},
 		HideWindowOnClose: true,
 		OnStartup:        app.startup,
 		OnBeforeClose:    app.beforeClose,
@@ -36,9 +36,9 @@ func main() {
 			app,
 		},
 		Windows: &windows.Options{
-			WebviewIsTransparent:              true,
-			WindowIsTranslucent:               true,
-			BackdropType:                      windows.Mica,
+			WebviewIsTransparent:              false,
+			WindowIsTranslucent:               false,
+			BackdropType:                      windows.None,
 			DisableWindowIcon:                 false,
 			DisableFramelessWindowDecorations: false,
 			WebviewUserDataPath:               "",

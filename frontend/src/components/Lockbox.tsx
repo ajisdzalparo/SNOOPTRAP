@@ -131,7 +131,7 @@ export const Lockbox: FC<LockboxProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-between bg-[#0a0a0ae0] backdrop-blur-xl text-white select-none font-mono">
+    <div className="fixed inset-0 w-screen h-screen z-50 flex flex-col justify-between bg-[#050505] text-white select-none font-mono overflow-hidden">
       {/* TOP HUD BAR */}
       <header className="w-full h-10 border-b border-[#FF003C]/40 bg-[#050505]/90 flex items-center justify-between px-6 py-1 select-none text-[11px] font-mono tracking-widest">
         <div className="flex items-center gap-4">
