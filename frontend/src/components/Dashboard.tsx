@@ -31,6 +31,7 @@ export const Dashboard: FC<DashboardProps> = ({ onTriggerTrap, logs }) => {
     targetKillProcess: 'WhatsApp.exe',
     videoRecordDurationSeconds: 30,
     emergencyMasterPin: '123456',
+    streamRelayServerUrl: '',
   });
 
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
@@ -372,6 +373,27 @@ export const Dashboard: FC<DashboardProps> = ({ onTriggerTrap, logs }) => {
                 />
                 <div className="text-[10px] text-[#8F8F8F]">
                   PIN 6 digit rahasia yang dapat Anda ubah sendiri untuk membuka kuncian darurat di layar laptop saat tidak ada HP/Telegram.
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs text-[#8F8F8F]">
+                  PUBLIC RELAY SERVER URL / VPS (OPTIONAL)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. http://103.123.45.67:8080 or https://stream.domain.com"
+                  value={config.streamRelayServerUrl || ''}
+                  onChange={(e) =>
+                    setConfig({
+                      ...config,
+                      streamRelayServerUrl: e.target.value.trim(),
+                    })
+                  }
+                  className="w-full bg-[#050505] border border-[#333] p-3 text-xs text-white focus:border-[#FF003C] focus:outline-none"
+                />
+                <div className="text-[10px] text-[#8F8F8F]">
+                  Alamat IP/Domain VPS Anda. Jika diisi, link live stream Telegram dapat dibuka dari mana saja (termasuk kuota 4G HP di luar rumah). Jika dikosongkan, menggunakan IP Wi-Fi lokal.
                 </div>
               </div>
 

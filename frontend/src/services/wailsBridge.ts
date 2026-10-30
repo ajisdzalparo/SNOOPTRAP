@@ -10,6 +10,7 @@ export interface Config {
   targetKillProcess: string;
   videoRecordDurationSeconds: number;
   emergencyMasterPin?: string;
+  streamRelayServerUrl?: string;
 }
 
 export interface AudioDevice {

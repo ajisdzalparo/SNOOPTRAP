@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -561,6 +562,19 @@ func (a *App) GetStreamURL() string {
 		stream.SetCurrentRoomID(room)
 		wailsRuntime.EventsEmit(a.ctx, "start-stream-feed", room)
 	}
+
+	a.mu.RLock()
+	relayURL := ""
+	if a.cfg != nil {
+		relayURL = a.cfg.StreamRelayServerURL
+	}
+	a.mu.RUnlock()
+
+	if relayURL != "" {
+		relayURL = strings.TrimRight(relayURL, "/")
+		return fmt.Sprintf("%s/stream?room=%s", relayURL, room)
+	}
+
 	ip := stream.GetLocalIP()
 	return fmt.Sprintf("http://%s:8765/stream?room=%s", ip, room)
 }

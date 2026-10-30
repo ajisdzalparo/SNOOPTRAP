@@ -16,6 +16,7 @@ type Config struct {
 	TargetKillProcess          string `json:"targetKillProcess"`
 	VideoRecordDurationSeconds int    `json:"videoRecordDurationSeconds"`
 	EmergencyMasterPIN         string `json:"emergencyMasterPin"`
+	StreamRelayServerURL       string `json:"streamRelayServerUrl"`
 }
 
 func DefaultConfig() *Config {
@@ -29,6 +30,7 @@ func DefaultConfig() *Config {
 		TargetKillProcess:          "WhatsApp.exe",
 		VideoRecordDurationSeconds: 30, // 30 seconds surveillance video + audio
 		EmergencyMasterPIN:         "123456",
+		StreamRelayServerURL:       "",
 	}
 }
 
