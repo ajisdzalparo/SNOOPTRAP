@@ -7,6 +7,8 @@ import { WailsBridge } from './services/wailsBridge';
 export function App() {
   const [, setCurrentState] = useState<'DISARMED' | 'ARMED' | 'TRIGGERED'>('DISARMED');
   const [isLocked, setIsLocked] = useState<boolean>(false);
+  const [recordingStatus, setRecordingStatus] = useState<'idle' | 'recording' | 'uploading' | 'uploaded' | 'failed'>('idle');
+  const [recordingSecondsLeft, setRecordingSecondsLeft] = useState<number>(0);
   const [logs, setLogs] = useState<string[]>([]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -154,21 +156,32 @@ export function App() {
       recorder.onstop = () => {
         isRecordingRef.current = false;
         if (chunks.length > 0) {
+          setRecordingStatus('uploading');
           const blob = new Blob(chunks, { type: options.mimeType || 'video/webm' });
           const reader = new FileReader();
           reader.onloadend = () => {
             const videoBase64 = reader.result as string;
             if (videoBase64 && videoBase64.length > 100) {
-              WailsBridge.processIntruderVideo(videoBase64).finally(() => {
-                if (streamRef.current) {
-                  streamRef.current.getTracks().forEach((t) => t.stop());
-                  streamRef.current = null;
-                }
-              });
+              WailsBridge.processIntruderVideo(videoBase64)
+                .then((ok) => {
+                  setRecordingStatus(ok ? 'uploaded' : 'failed');
+                })
+                .catch(() => {
+                  setRecordingStatus('failed');
+                })
+                .finally(() => {
+                  if (streamRef.current) {
+                    streamRef.current.getTracks().forEach((t) => t.stop());
+                    streamRef.current = null;
+                  }
+                });
+            } else {
+              setRecordingStatus('failed');
             }
           };
           reader.readAsDataURL(blob);
         } else {
+          setRecordingStatus('idle');
           if (streamRef.current) {
             streamRef.current.getTracks().forEach((t) => t.stop());
             streamRef.current = null;
@@ -187,10 +200,13 @@ export function App() {
         // fallback to default
       }
 
+      setRecordingStatus('recording');
+      setRecordingSecondsLeft(targetDuration);
       recorder.start(250);
       let secondsLeft = targetDuration;
       const timer = setInterval(() => {
         secondsLeft -= 1;
+        setRecordingSecondsLeft(Math.max(0, secondsLeft));
         if (secondsLeft <= 0) {
           clearInterval(timer);
           if (recorder.state === 'recording') {
@@ -201,6 +217,7 @@ export function App() {
     } catch (e) {
       console.error('Surveillance error:', e);
       isRecordingRef.current = false;
+      setRecordingStatus('failed');
     }
   };
 
@@ -305,6 +322,26 @@ export function App() {
         console.warn('Start stream feed failed:', err);
       }
     });
+    // Periodic fallback status sync (ensures UI unlocks instantly even if event is dropped)
+    const statusInterval = setInterval(async () => {
+      try {
+        const status = await WailsBridge.getStatus();
+        if (status) {
+          setCurrentState(status.state as any);
+          if (status.state === 'DISARMED') {
+            setIsLocked(false);
+          } else if (status.state === 'TRIGGERED') {
+            setIsLocked(true);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(statusInterval);
+    };
   }, []);
 
   const handleTriggerTrap = async () => {
@@ -369,6 +406,8 @@ export function App() {
         <Lockbox
           onDisarmSuccess={handleDisarmSuccess}
           logs={logs}
+          recordingStatus={recordingStatus}
+          recordingSecondsLeft={recordingSecondsLeft}
         />
       ) : (
         <Dashboard onTriggerTrap={handleTriggerTrap} logs={logs} />

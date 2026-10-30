@@ -15,11 +15,15 @@ import { WailsBridge } from '../services/wailsBridge';
 interface LockboxProps {
   onDisarmSuccess: () => void;
   logs: string[];
+  recordingStatus?: 'idle' | 'recording' | 'uploading' | 'uploaded' | 'failed';
+  recordingSecondsLeft?: number;
 }
 
 export const Lockbox: FC<LockboxProps> = ({
   onDisarmSuccess,
   logs,
+  recordingStatus = 'idle',
+  recordingSecondsLeft = 0,
 }) => {
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -282,6 +286,24 @@ export const Lockbox: FC<LockboxProps> = ({
 
             {/* 6-DIGIT OTP FORM */}
             <div className="bg-[#080808] border border-[#222] p-4 flex flex-col items-center space-y-4">
+              {/* Active Recording / Uploading Status Banner */}
+              {recordingStatus === 'recording' && (
+                <div className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-[#FF003C]/20 border border-[#FF003C] text-[#FF003C] text-xs font-bold tracking-widest animate-pulse">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#FF003C] animate-ping" />
+                  <span>🔴 MEREKAM BUKTI VIDEO & AUDIO CCTV ({recordingSecondsLeft} DETIK)</span>
+                </div>
+              )}
+              {recordingStatus === 'uploading' && (
+                <div className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-[#ffbb00]/20 border border-[#ffbb00] text-[#ffbb00] text-xs font-bold tracking-widest animate-pulse">
+                  <span>⬆️ MENGIRIM REKAMAN BUKTI VIDEO KE TELEGRAM...</span>
+                </div>
+              )}
+              {recordingStatus === 'uploaded' && (
+                <div className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-[#00FF41]/20 border border-[#00FF41] text-[#00FF41] text-xs font-bold tracking-widest">
+                  <span>✅ BUKTI REKAMAN VIDEO SUDAH TERKIRIM KE TELEGRAM!</span>
+                </div>
+              )}
+
               <div className="text-center">
                 <div className="text-xs font-bold text-white tracking-widest uppercase">
                   ENTER 6-DIGIT TELEGRAM 2FA DISARM CODE

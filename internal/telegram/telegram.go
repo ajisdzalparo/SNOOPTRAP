@@ -82,7 +82,13 @@ func (c *Client) SendVideo(videoBase64 string, caption string) error {
 	}
 
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendVideo", c.botToken)
-	return c.sendMediaFile(url, "video", "surveillance.webm", "video/webm", videoBytes, caption)
+	err = c.sendMediaFile(url, "video", "surveillance.mp4", "video/mp4", videoBytes, caption)
+	if err != nil {
+		// Fallback to sendDocument (Telegram always accepts any format including .webm via sendDocument!)
+		docURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendDocument", c.botToken)
+		return c.sendMediaFile(docURL, "document", "surveillance.webm", "video/webm", videoBytes, caption)
+	}
+	return nil
 }
 
 func (c *Client) sendMediaFile(url, fieldName, filename, mimeType string, data []byte, caption string) error {

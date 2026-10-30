@@ -1,4 +1,5 @@
 // Typed Wails bridge interface
+import { EventsOn } from '../../wailsjs/runtime/runtime';
 
 export interface Config {
   telegramBotToken: string;
@@ -178,8 +179,15 @@ export const WailsBridge = {
   },
 
   onEvent(event: string, callback: (...args: any[]) => void): void {
-    if (window.runtime?.EventsOn) {
-      window.runtime.EventsOn(event, callback);
+    try {
+      EventsOn(event, callback);
+    } catch {
+      const w = window as any;
+      if (w.runtime?.EventsOnMultiple) {
+        w.runtime.EventsOnMultiple(event, callback, -1);
+      } else if (w.runtime?.EventsOn) {
+        w.runtime.EventsOn(event, callback);
+      }
     }
   },
 };

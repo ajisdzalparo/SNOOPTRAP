@@ -249,36 +249,22 @@ func (a *App) startIdleMonitor() {
 				isSignificantMouseMoved := distSq > 900
 
 				currentTick, err := idle.GetLastInputTick()
-				hasAnyInput := (err == nil && currentTick != lastTickAtArm && idleSecs < 2)
+				hasRecentInput := (err == nil && currentTick != lastTickAtArm && idleSecs < 2)
+				isTriggered := isSignificantMouseMoved || hasRecentInput
 
-				// CASE A: Within the 3-second buffer after idle / arming
-				if time.Since(armedAt) < 3*time.Second {
-					if hasAnyInput {
-						if isAuto {
-							// If it was auto-armed and user touched laptop within 3s, they are still at the desk!
-							// Smoothly return to standby without triggering alarm
-							a.addLog("[GUARD] Activity detected within 3s of idle auto-arm. Resuming standby.")
-							a.DisarmSystem("")
-						} else {
-							// Manual arm: update stabilization baseline so user lifting their hand doesn't trigger
-							a.mu.Lock()
-							a.lastInputTickAtArm = currentTick
-							a.initialCursorX = curX
-							a.initialCursorY = curY
-							a.mu.Unlock()
-						}
+				// CASE A: Only apply 3-second grace buffer if system was AUTO-ARMED by idle detection
+				// If armed manually or via Telegram /arm, it is hot immediately!
+				if isAuto && time.Since(armedAt) < 3*time.Second {
+					if isTriggered {
+						a.addLog("[GUARD] Activity detected within 3s of idle auto-arm. Resuming standby.")
+						a.DisarmSystem("")
 					}
 					continue
 				}
 
-				// CASE B: System is fully HOT (after 3 seconds)
-				// Triggers ONLY if:
-				// - Significant mouse movement (> 30 pixels) OR
-				// - An actual key is pressed on keyboard (distSq < 25 but hasAnyInput is true)
-				if hasAnyInput {
-					if isSignificantMouseMoved || distSq < 25 {
-						a.TriggerTrap()
-					}
+				// CASE B: System is fully HOT
+				if isTriggered {
+					a.TriggerTrap()
 				}
 			}
 		}
@@ -372,6 +358,9 @@ func (a *App) TriggerTrap() {
 	wailsRuntime.WindowFullscreen(a.ctx)
 	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
 	hook.EnableKeyboardBlocker()
+
+	// Win32 Force Foreground: overrides Windows focus lock so it jumps directly above Google Chrome / active apps
+	failsafe.ForceBringToFront("SnoopTrap // IntruderLens")
 
 	// 2. IMMEDIATELY send Telegram alert with OTP (do NOT wait for webcam!)
 	if botToken != "" && chatID != "" {
