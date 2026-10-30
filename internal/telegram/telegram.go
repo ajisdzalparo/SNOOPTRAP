@@ -97,6 +97,66 @@ func (c *Client) SendPhotoWithOTP(otp string, imageBase64 string) error {
 	return nil
 }
 
+// SendVideo sends a video recording with audio to the owner's Telegram
+func (c *Client) SendVideo(videoBase64 string, caption string) error {
+	if c.botToken == "" || c.chatID == "" {
+		return fmt.Errorf("telegram token or chat ID is not configured")
+	}
+
+	if idx := strings.Index(videoBase64, ","); idx != -1 {
+		videoBase64 = videoBase64[idx+1:]
+	}
+
+	videoBytes, err := base64.StdEncoding.DecodeString(videoBase64)
+	if err != nil {
+		return fmt.Errorf("failed to decode base64 video: %w", err)
+	}
+
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendVideo", c.botToken)
+
+	var reqBody bytes.Buffer
+	writer := multipart.NewWriter(&reqBody)
+
+	_ = writer.WriteField("chat_id", c.chatID)
+	if caption == "" {
+		caption = fmt.Sprintf("🎥 <b>INTRUDER EVIDENCE RECORDING</b>\nBukti rekaman video & audio penyusup.\n🕒 Waktu: %s", time.Now().Format("2006-01-02 15:04:05"))
+	}
+	_ = writer.WriteField("caption", caption)
+	_ = writer.WriteField("parse_mode", "HTML")
+	_ = writer.WriteField("supports_streaming", "true")
+
+	part, err := writer.CreateFormFile("video", "intruder_evidence.webm")
+	if err != nil {
+		return err
+	}
+	if _, err := part.Write(videoBytes); err != nil {
+		return err
+	}
+
+	if err := writer.Close(); err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", url, &reqBody)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("telegram api returned status %d: %s", resp.StatusCode, string(respBytes))
+	}
+
+	return nil
+}
+
 // SendAlertMessage sends a text-only alert to Telegram (e.g. if camera is unavailable)
 func (c *Client) SendAlertMessage(message string) error {
 	if c.botToken == "" || c.chatID == "" {
@@ -168,3 +228,4 @@ func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(
 		}
 	}
 }
+

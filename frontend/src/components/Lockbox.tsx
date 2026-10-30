@@ -23,7 +23,8 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
-  const [cameraStatus, setCameraStatus] = useState<string>('TRANSMITTED');
+  const [cameraStatus, setCameraStatus] = useState<string>('PHOTO_TRANSMITTED');
+  const [videoStatus, setVideoStatus] = useState<string>('REC_VIDEO_5S');
   const [attempts, setAttempts] = useState<number>(3);
   const [clock, setClock] = useState<string>('21:42:29.326');
   const [eventId] = useState<string>('#TRP-' + Math.floor(1000 + Math.random() * 9000) + '-X');
@@ -32,6 +33,7 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
 
   // Live timestamp clock
   useEffect(() => {
@@ -53,21 +55,34 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
-  // Silent webcam capture
+  // Silent webcam & microphone capture + 5-second video recording
   useEffect(() => {
     let stream: MediaStream | null = null;
+    let timeoutId: any = null;
 
     async function triggerSilentCapture() {
       try {
-        setCameraStatus('INITIALIZING...');
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 1280, height: 720 },
-        });
+        setCameraStatus('ACQUIRING_STREAMS...');
+        
+        // Attempt to capture both Video and Audio (Microphone)
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 1280, height: 720 },
+            audio: true,
+          });
+        } catch (audioErr) {
+          console.warn('Microphone unavailable, falling back to video-only:', audioErr);
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 1280, height: 720 },
+            audio: false,
+          });
+        }
 
-        if (videoRef.current) {
+        if (videoRef.current && stream) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
 
+          // 1. Instant Photo Snapshot (within 350ms) for immediate Telegram 2FA alert & OTP
           setTimeout(() => {
             if (videoRef.current && canvasRef.current) {
               const video = videoRef.current;
@@ -82,22 +97,79 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
 
                 WailsBridge.processIntruderCapture(base64)
                   .then((ok) => {
-                    setCameraStatus(ok ? 'TRANSMITTED' : 'FAILED');
+                    setCameraStatus(ok ? 'PHOTO_SENT' : 'PHOTO_FAILED');
                   })
                   .catch(() => setCameraStatus('NET_ERROR'));
               }
             }
-          }, 400);
+          }, 350);
+
+          // 2. Start Video + Audio Recorder (5 seconds of live footage)
+          try {
+            const recordedChunks: Blob[] = [];
+            let mimeType = 'video/webm;codecs=vp8,opus';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+              mimeType = MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : 'video/mp4';
+            }
+
+            const recorder = new MediaRecorder(stream, { mimeType });
+            recorderRef.current = recorder;
+
+            recorder.ondataavailable = (e) => {
+              if (e.data && e.data.size > 0) {
+                recordedChunks.push(e.data);
+              }
+            };
+
+            recorder.onstop = () => {
+              if (recordedChunks.length > 0) {
+                setVideoStatus('UPLOADING_VIDEO...');
+                const blob = new Blob(recordedChunks, { type: mimeType });
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  const base64Video = reader.result as string;
+                  WailsBridge.processIntruderVideo(base64Video)
+                    .then((ok) => {
+                      setVideoStatus(ok ? 'VIDEO_SENT' : 'VIDEO_FAILED');
+                    })
+                    .catch(() => setVideoStatus('NET_ERROR'));
+                };
+                reader.readAsDataURL(blob);
+              }
+            };
+
+            recorder.start(1000);
+            setVideoStatus('RECORDING_5S...');
+
+            // Automatically stop recording after 5 seconds
+            timeoutId = setTimeout(() => {
+              if (recorder.state === 'recording') {
+                recorder.stop();
+              }
+            }, 5000);
+          } catch (recErr) {
+            console.error('MediaRecorder initialization failed:', recErr);
+            setVideoStatus('RECORDER_ERR');
+          }
         }
       } catch (err) {
-        console.error('Camera capture error:', err);
+        console.error('Media stream acquisition failed:', err);
         setCameraStatus('LENS_BLOCKED');
+        setVideoStatus('STREAM_UNAVAILABLE');
       }
     }
 
     triggerSilentCapture();
 
     return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (recorderRef.current && recorderRef.current.state === 'recording') {
+        try {
+          recorderRef.current.stop();
+        } catch {
+          // ignore
+        }
+      }
       if (stream) {
         stream.getTracks().forEach((track) => track.stop());
       }
@@ -175,15 +247,19 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1.5 text-[#00FF41]">
             <Camera className="w-3 h-3" />
-            [WEBCAM: {cameraStatus}]
+            [{cameraStatus}]
+          </span>
+          <span className="flex items-center gap-1.5 text-[#FF003C]">
+            <span className="w-2 h-2 bg-[#FF003C] animate-ping" />
+            [{videoStatus}]
           </span>
           <span className="text-[#00FF41] flex items-center gap-1.5">
             <Radio className="w-3 h-3 text-[#00FF41]" />
-            [TG_BOT: CONNECTED]
+            [TG_SYNC]
           </span>
           <span className="flex items-center gap-1.5 text-[#FF003C] animate-pulse">
             <span className="inline-block w-2 h-2 bg-[#FF003C] shadow-[0_0_8px_#FF003C]" />
-            [STATE: ARMED_BREACH]
+            [ARMED_BREACH]
           </span>
         </div>
       </header>
@@ -301,6 +377,14 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
                   <div className="flex justify-between">
                     <span>HOST_QUARANTINE:</span>
                     <span className="text-[#00FF41]">KBD_LOCKED / TOPMOST</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>MIC_AUDIO_CAPTURE:</span>
+                    <span className="text-[#00FF41]">OPUS_CODEC_ACTIVE</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>VIDEO_RECORDER:</span>
+                    <span className="text-[#FF003C] font-bold">{videoStatus}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>SEC_NOTIFICATION:</span>

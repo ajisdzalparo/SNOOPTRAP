@@ -88,3 +88,4 @@ func SaveConfig(cfg *Config) error {
 
 	return os.WriteFile(path, data, 0644)
 }
+

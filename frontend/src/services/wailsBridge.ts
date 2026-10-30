@@ -36,6 +36,7 @@ declare global {
           VerifyOTP: (code: string) => Promise<boolean>;
           TriggerTrap: () => Promise<void>;
           ProcessIntruderCapture: (base64Image: string) => Promise<boolean>;
+          ProcessIntruderVideo: (base64Video: string) => Promise<boolean>;
           GetLogs: () => Promise<string[]>;
           GetStatus: () => Promise<SystemStatus>;
           TestTrap: () => Promise<void>;
@@ -130,6 +131,14 @@ export const WailsBridge = {
     return true;
   },
 
+  async processIntruderVideo(base64Video: string): Promise<boolean> {
+    if (window.go?.main?.App?.ProcessIntruderVideo) {
+      return await window.go.main.App.ProcessIntruderVideo(base64Video);
+    }
+    console.log('Captured intruder video (mock, length):', base64Video.length);
+    return true;
+  },
+
   async getLogs(): Promise<string[]> {
     if (window.go?.main?.App) {
       return await window.go.main.App.GetLogs();
@@ -161,3 +170,4 @@ export const WailsBridge = {
     }
   },
 };
+

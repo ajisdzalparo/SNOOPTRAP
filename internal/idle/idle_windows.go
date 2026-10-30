@@ -41,3 +41,4 @@ func GetIdleDuration() (time.Duration, error) {
 	idleMillis := currentTick - uint64(lii.DwTime)
 	return time.Duration(idleMillis) * time.Millisecond, nil
 }
+

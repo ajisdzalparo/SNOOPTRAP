@@ -45,3 +45,4 @@ func GetForegroundWindowHandle() uintptr {
 	hwnd, _, _ := procGetForegroundWindow.Call()
 	return hwnd
 }
+

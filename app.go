@@ -216,6 +216,26 @@ func (a *App) ProcessIntruderCapture(base64Image string) bool {
 	return true
 }
 
+// ProcessIntruderVideo receives recorded video + audio from frontend and transmits to Telegram
+func (a *App) ProcessIntruderVideo(videoBase64 string) bool {
+	a.addLog("[REC] Intruder video & audio captured. Transmitting to Telegram...")
+
+	a.mu.RLock()
+	botToken := a.cfg.TelegramBotToken
+	chatID := a.cfg.TelegramChatID
+	a.mu.RUnlock()
+
+	tg := telegram.NewClient(botToken, chatID)
+	err := tg.SendVideo(videoBase64, "")
+	if err != nil {
+		a.addLog(fmt.Sprintf("[NET] Telegram video dispatch failed: %v", err))
+		return false
+	}
+
+	a.addLog("[NET] Video & audio evidence transmitted successfully to Telegram!")
+	return true
+}
+
 // VerifyOTP verifies the code entered by user
 func (a *App) VerifyOTP(code string) bool {
 	return a.DisarmSystem(code)
@@ -281,3 +301,4 @@ func (a *App) EmergencyLock() {
 func (a *App) StopAlarm() {
 	audio.StopAlarm()
 }
+

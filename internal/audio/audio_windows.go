@@ -140,3 +140,4 @@ func GetAudioDevices() ([]AudioDevice, error) {
 		{ID: "speakers", Name: "Internal Laptop Speakers (Override Headset)", IsDefault: false},
 	}, nil
 }
+

@@ -77,3 +77,4 @@ wails dev
 wails build
 ```
 Hasil file biner eksekutabel berada di: `build/bin/snooptrap.exe`.
+
