@@ -58,6 +58,10 @@ export function StopAlarm() {
   return window['go']['main']['App']['StopAlarm']();
 }
 
+export function TestServerConnection(arg1, arg2) {
+  return window['go']['main']['App']['TestServerConnection'](arg1, arg2);
+}
+
 export function TestTrap() {
   return window['go']['main']['App']['TestTrap']();
 }

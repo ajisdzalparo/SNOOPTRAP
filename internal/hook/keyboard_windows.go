@@ -139,6 +139,10 @@ func keyboardProc(nCode int32, wParam uintptr, lParam uintptr) uintptr {
 
 	// 2. Block navigation if system is locked (The Trap)
 	if isBlocked {
+		// Block Volume Mute and Volume Down (intruder cannot mute or lower volume!)
+		if vk == 0xAD || vk == 0xAE { // VK_VOLUME_MUTE, VK_VOLUME_DOWN
+			return 1 // Suppress keystroke
+		}
 		// Block Windows Keys (Start menu, Win+D, Win+L, etc)
 		if vk == VK_LWIN || vk == VK_RWIN {
 			return 1

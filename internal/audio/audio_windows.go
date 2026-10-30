@@ -101,10 +101,10 @@ func GenerateSirenWav(durationSec int) []byte {
 	return buf.Bytes()
 }
 
-// PlayAlarmSiren unmutes, forces volume, and plays the cyber alarm
+// PlayAlarmSiren unmutes, forces volume to 100%, and plays a sharp 2-second cyber alarm burst
 func PlayAlarmSiren() {
 	MaximizeMasterVolume()
-	wavBytes := GenerateSirenWav(5)
+	wavBytes := GenerateSirenWav(2) // Concise 2-second sharp alarm burst
 	procPlaySound.Call(
 		uintptr(unsafe.Pointer(&wavBytes[0])),
 		0,

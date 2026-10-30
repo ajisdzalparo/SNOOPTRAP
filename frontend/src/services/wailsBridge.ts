@@ -178,6 +178,13 @@ export const WailsBridge = {
     }
   },
 
+  async testServerConnection(host: string, port: string): Promise<{ success: boolean; message: string }> {
+    if ((window as any).go?.main?.App?.TestServerConnection) {
+      return await (window as any).go.main.App.TestServerConnection(host, port);
+    }
+    return { success: false, message: 'Wails subsystem not connected.' };
+  },
+
   onEvent(event: string, callback: (...args: any[]) => void): void {
     try {
       EventsOn(event, callback);

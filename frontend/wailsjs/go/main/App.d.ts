@@ -32,6 +32,8 @@ export function SetStreamRoomID(arg1:string):Promise<void>;
 
 export function StopAlarm():Promise<void>;
 
+export function TestServerConnection(arg1:string,arg2:string):Promise<main.ServerTestResult>;
+
 export function TestTrap():Promise<void>;
 
 export function TriggerTrap():Promise<void>;

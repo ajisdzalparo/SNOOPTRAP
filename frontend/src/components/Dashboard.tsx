@@ -32,9 +32,12 @@ export const Dashboard: FC<DashboardProps> = ({ onTriggerTrap, logs }) => {
     videoRecordDurationSeconds: 30,
     emergencyMasterPin: '123456',
     streamServerHost: '',
-    streamServerPort: '8080',
+    streamServerPort: '',
     streamRelayServerUrl: '',
   });
+
+  const [isTestingServer, setIsTestingServer] = useState<boolean>(false);
+  const [serverTestResult, setServerTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
   const [status, setStatus] = useState<SystemStatus>({
@@ -78,6 +81,50 @@ export const Dashboard: FC<DashboardProps> = ({ onTriggerTrap, logs }) => {
 
     return () => clearInterval(interval);
   }, []);
+
+  const getStreamPreviewURL = () => {
+    const host = config.streamServerHost ? config.streamServerHost.trim() : '';
+    const port = config.streamServerPort ? config.streamServerPort.trim() : '';
+    if (!host) return '';
+    const cleanHost = host.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const isIP = /^(\d{1,3}\.){3}\d{1,3}$/.test(cleanHost.split(':')[0]);
+    let scheme = 'https://';
+    if (host.startsWith('http://')) {
+      scheme = 'http://';
+    } else if (host.startsWith('https://')) {
+      scheme = 'https://';
+    } else if (isIP) {
+      scheme = 'http://';
+    }
+    const portPart = port && port !== '80' && port !== '443' && !cleanHost.includes(':') ? `:${port}` : '';
+    return `${scheme}${cleanHost}${portPart}/stream?room=snoop-XXXXXX`;
+  };
+
+  const handleTestServer = async () => {
+    if (!config.streamServerHost) {
+      setServerTestResult({
+        success: false,
+        message: 'Masukkan IP VPS atau domain terlebih dahulu sebelum melakukan tes.',
+      });
+      return;
+    }
+    setIsTestingServer(true);
+    setServerTestResult(null);
+    try {
+      const res = await WailsBridge.testServerConnection(
+        config.streamServerHost,
+        config.streamServerPort || ''
+      );
+      setServerTestResult(res);
+    } catch (err: any) {
+      setServerTestResult({
+        success: false,
+        message: 'Gagal melakukan tes: ' + (err?.message || err),
+      });
+    } finally {
+      setIsTestingServer(false);
+    }
+  };
 
   const handleSaveConfig = async (e: FormEvent) => {
     e.preventDefault();
@@ -391,10 +438,10 @@ export const Dashboard: FC<DashboardProps> = ({ onTriggerTrap, logs }) => {
                 
                 <div className="grid grid-cols-3 gap-2">
                   <div className="col-span-2 space-y-1">
-                    <label className="text-[11px] text-[#8F8F8F]">SERVER IP / HOST</label>
+                    <label className="text-[11px] text-[#8F8F8F]">SERVER DOMAIN / IP HOST</label>
                     <input
                       type="text"
-                      placeholder="e.g. 103.123.45.67 or vps.domain.com"
+                      placeholder="e.g. stream-snooptrap.ajisdzalparo.com"
                       value={config.streamServerHost || ''}
                       onChange={(e) =>
                         setConfig({
@@ -406,10 +453,10 @@ export const Dashboard: FC<DashboardProps> = ({ onTriggerTrap, logs }) => {
                     />
                   </div>
                   <div className="col-span-1 space-y-1">
-                    <label className="text-[11px] text-[#8F8F8F]">PORT</label>
+                    <label className="text-[11px] text-[#8F8F8F]">PORT (OPSIONAL)</label>
                     <input
                       type="text"
-                      placeholder="8080"
+                      placeholder="Kosongkan jika domain"
                       value={config.streamServerPort || ''}
                       onChange={(e) =>
                         setConfig({
@@ -422,12 +469,38 @@ export const Dashboard: FC<DashboardProps> = ({ onTriggerTrap, logs }) => {
                   </div>
                 </div>
 
-                <div className="text-[10px] text-[#8F8F8F]">
-                  Masukkan IP dan Port VPS Anda yang menjalankan relay Docker. Tautan live streaming di Telegram akan otomatis menggunakan IP ini sehingga bisa diakses dari mana saja via internet. Kosongkan jika ingin memakai jaringan Wi-Fi lokal.
+                <div className="text-[10px] text-[#8F8F8F] leading-relaxed">
+                  💡 <b>Tips Domain vs IP:</b> Jika Anda sudah menggunakan domain (seperti Cloudflare / Caddy HTTPS), <b>kosongkan kolom Port</b>. Kolom Port (misal: <code>8080</code>) hanya perlu diisi jika Anda langsung menggunakan IP Publik mentah VPS tanpa domain.
                 </div>
+
                 {config.streamServerHost && (
-                  <div className="text-[10px] text-[#00FF41] font-mono bg-[#050505] p-2 border border-[#222]">
-                    Stream Endpoint: http://{config.streamServerHost.replace(/^https?:\/\//, '')}:{config.streamServerPort || '8080'}/stream?room=snoop-XXXXXX
+                  <div className="space-y-2 pt-1">
+                    <div className="text-[10px] text-[#00FF41] font-mono bg-[#050505] p-2 border border-[#222] break-all">
+                      Preview Tautan Telegram: {getStreamPreviewURL()}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleTestServer}
+                        disabled={isTestingServer}
+                        className="py-1.5 px-3 bg-[#111] hover:bg-[#222] border border-[#00FF41]/50 text-[#00FF41] text-[11px] font-bold tracking-wider uppercase transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {isTestingServer ? '⏳ SEDANG MENGUJI KONEKSI...' : '🧪 TEST KONEKSI SERVER'}
+                      </button>
+                    </div>
+
+                    {serverTestResult && (
+                      <div
+                        className={`text-[11px] p-2 border font-mono ${
+                          serverTestResult.success
+                            ? 'bg-[#002200] border-[#00FF41] text-[#00FF41]'
+                            : 'bg-[#220000] border-[#FF003C] text-[#FF003C]'
+                        }`}
+                      >
+                        {serverTestResult.message}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

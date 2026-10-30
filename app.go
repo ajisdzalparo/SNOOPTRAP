@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -381,15 +383,15 @@ func (a *App) TriggerTrap() {
 	// 4. Ensure telegram polling is active for remote commands / buttons
 	a.ensureTelegramListener()
 
-	// 5. Grace Period: 5-second delayed siren (allows owner to disarm silently via Telegram button or Ctrl+Alt+U)
+	// 5. Short 2-second grace period before sharp alert shock
 	go func() {
-		time.Sleep(5 * time.Second)
+		time.Sleep(2 * time.Second)
 		a.mu.RLock()
 		isStillTriggered := (a.status == "TRIGGERED")
 		a.mu.RUnlock()
 
 		if isStillTriggered {
-			a.addLog("[TRAP] 5-second grace expired without disarm. Engaging Siren.")
+			a.addLog("[TRAP] Grace expired without disarm. Engaging brief sharp alarm shock.")
 			audio.PlayAlarmSiren()
 		}
 	}()
@@ -542,6 +544,85 @@ func (a *App) PlayRemoteVoice(audioBase64 string, mimeType string) {
 	})
 }
 
+type ServerTestResult struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+func isIPv4(host string) bool {
+	clean := strings.TrimPrefix(strings.TrimPrefix(host, "http://"), "https://")
+	if idx := strings.Index(clean, ":"); idx != -1 {
+		clean = clean[:idx]
+	}
+	clean = strings.Trim(clean, "/")
+	return net.ParseIP(clean) != nil
+}
+
+func resolveStreamEndpoint(rawHost, rawPort string) string {
+	host := strings.TrimSpace(rawHost)
+	port := strings.TrimSpace(rawPort)
+	if host == "" {
+		return ""
+	}
+
+	cleanHost := strings.TrimPrefix(strings.TrimPrefix(host, "http://"), "https://")
+	cleanHost = strings.TrimRight(cleanHost, "/")
+
+	scheme := "http://"
+	if strings.HasPrefix(host, "https://") {
+		scheme = "https://"
+	} else if strings.HasPrefix(host, "http://") {
+		scheme = "http://"
+	} else if !isIPv4(cleanHost) {
+		// Domain name (e.g. stream-snooptrap.ajisdzalparo.com) -> use HTTPS by default
+		scheme = "https://"
+	}
+
+	// If port is empty, 80, 443, or host already contains a port, don't append port
+	if port == "" || port == "80" || port == "443" || strings.Contains(cleanHost, ":") {
+		return fmt.Sprintf("%s%s", scheme, cleanHost)
+	}
+
+	return fmt.Sprintf("%s%s:%s", scheme, cleanHost, port)
+}
+
+// TestServerConnection tests connectivity to the configured stream relay server
+func (a *App) TestServerConnection(host string, port string) ServerTestResult {
+	baseURL := resolveStreamEndpoint(host, port)
+	if baseURL == "" {
+		return ServerTestResult{
+			Success: false,
+			Message: "IP atau domain server belum diisi.",
+		}
+	}
+
+	healthURL := fmt.Sprintf("%s/health", strings.TrimRight(baseURL, "/"))
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	resp, err := client.Get(healthURL)
+	if err != nil {
+		return ServerTestResult{
+			Success: false,
+			Message: fmt.Sprintf("Gagal menghubungi server (%s): %v", healthURL, err),
+		}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		return ServerTestResult{
+			Success: true,
+			Message: fmt.Sprintf("Koneksi Berhasil! Relay Server Online di %s (HTTP 200 OK)", baseURL),
+		}
+	}
+
+	return ServerTestResult{
+		Success: false,
+		Message: fmt.Sprintf("Server merespons HTTP %d (%s). Jika 502 Bad Gateway, pastikan container Docker sudah berjalan di VPS.", resp.StatusCode, resp.Status),
+	}
+}
+
 // SetStreamRoomID updates the active WebRTC stream room ID
 func (a *App) SetStreamRoomID(room string) {
 	stream.SetCurrentRoomID(room)
@@ -560,21 +641,7 @@ func (a *App) GetStreamURL() string {
 	relayURL := ""
 	if a.cfg != nil {
 		if strings.TrimSpace(a.cfg.StreamServerHost) != "" {
-			host := strings.TrimSpace(a.cfg.StreamServerHost)
-			port := strings.TrimSpace(a.cfg.StreamServerPort)
-			if port == "" {
-				port = "8080"
-			}
-			scheme := "http://"
-			if strings.HasPrefix(host, "http://") || strings.HasPrefix(host, "https://") {
-				scheme = ""
-			}
-			// If host already contains port, don't duplicate
-			if strings.Contains(strings.TrimPrefix(strings.TrimPrefix(host, "http://"), "https://"), ":") {
-				relayURL = fmt.Sprintf("%s%s", scheme, host)
-			} else {
-				relayURL = fmt.Sprintf("%s%s:%s", scheme, host, port)
-			}
+			relayURL = resolveStreamEndpoint(a.cfg.StreamServerHost, a.cfg.StreamServerPort)
 		} else if strings.TrimSpace(a.cfg.StreamRelayServerURL) != "" {
 			relayURL = strings.TrimSpace(a.cfg.StreamRelayServerURL)
 		}
