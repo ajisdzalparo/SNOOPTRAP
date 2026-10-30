@@ -84,15 +84,23 @@ func (c *Client) SendVideo(videoBase64 string, caption string) error {
 	}
 
 	if caption == "" {
-		caption = "📹 <b>REKAMAN BUKTI PENYUSUP (VIDEO + AUDIO)</b>\nSistem merekam sebelum alarm berbunyi."
+		caption = "📹 <b>REKAMAN BUKTI PENYUSUP (VIDEO + AUDIO)</b>\nSistem merekam bukti wajah & suara penyusup sebelum alarm."
+	}
+
+	// Detect WebM vs MP4 from container magic bytes
+	filename := "surveillance.mp4"
+	mimeType := "video/mp4"
+	if len(videoBytes) >= 4 && videoBytes[0] == 0x1A && videoBytes[1] == 0x45 && videoBytes[2] == 0xDF && videoBytes[3] == 0xA3 {
+		filename = "surveillance.webm"
+		mimeType = "video/webm"
 	}
 
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendVideo", c.botToken)
-	err = c.sendMediaFile(url, "video", "surveillance.mp4", "video/mp4", videoBytes, caption)
+	err = c.sendMediaFile(url, "video", filename, mimeType, videoBytes, caption)
 	if err != nil {
 		// Fallback to sendDocument (Telegram always accepts any format including .webm via sendDocument!)
 		docURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendDocument", c.botToken)
-		return c.sendMediaFile(docURL, "document", "surveillance.webm", "video/webm", videoBytes, caption)
+		return c.sendMediaFile(docURL, "document", filename, mimeType, videoBytes, caption)
 	}
 	return nil
 }

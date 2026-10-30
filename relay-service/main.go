@@ -73,7 +73,7 @@ const viewerHTML = `<!DOCTYPE html>
     </div>
 
     <div class="video-container">
-      <video id="remoteVideo" autoplay playsinline controls></video>
+      <video id="remoteVideo" autoplay playsinline muted></video>
       <div class="overlay-text" id="fpsText">CAM: READY</div>
     </div>
 
@@ -121,22 +121,51 @@ const viewerHTML = `<!DOCTYPE html>
         }
       });
 
+      function getDummyStream() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 2;
+        canvas.height = 2;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, 2, 2);
+        const stream = canvas.captureStream ? canvas.captureStream(1) : new MediaStream();
+        try {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) {
+            const actx = new AudioContext();
+            const osc = actx.createOscillator();
+            const dst = actx.createMediaStreamDestination();
+            osc.connect(dst);
+            osc.start();
+            const at = dst.stream.getAudioTracks()[0];
+            if (at) {
+              at.enabled = false;
+              stream.addTrack(at);
+            }
+          }
+        } catch (e) {}
+        return stream;
+      }
+
       let activeCall = null;
       function callLaptop() {
         if (!peer || peer.destroyed) return;
         statusText.innerText = "Memanggil kamera laptop (" + room + ")...";
         liveBadge.innerText = "CALLING...";
 
-        activeCall = peer.call(room, new MediaStream());
+        const dummy = getDummyStream();
+        activeCall = peer.call(room, dummy);
         if (!activeCall) return;
 
         activeCall.on('stream', (stream) => {
           remoteVideo.srcObject = stream;
-          remoteVideo.play().catch(()=>{});
-          liveBadge.innerText = "LIVE (30 FPS)";
-          liveBadge.style.color = "#00ff41";
-          fpsText.innerText = "FPS: 30 | AUDIO: LIVE";
-          statusText.innerText = "Siaran langsung aktif! Kamera & mic laptop terhubung real-time.";
+          remoteVideo.muted = true;
+          remoteVideo.play().then(() => {
+            liveBadge.innerText = "LIVE (REALTIME)";
+            liveBadge.style.color = "#00ff41";
+            fpsText.innerText = "CAM: ONLINE | TAP TOMBOL SUARA DI BAWAH";
+            statusText.innerText = "Siaran langsung aktif! Kamera & mic laptop terhubung real-time.";
+          }).catch(()=>{});
         });
 
         activeCall.on('close', () => {

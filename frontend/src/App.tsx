@@ -17,24 +17,11 @@ export function App() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const peerRef = useRef<Peer | null>(null);
   const isRecordingRef = useRef<boolean>(false);
+  const pendingCallRef = useRef<any>(null);
 
-  const initPeerStream = async (room: string) => {
+  const initPeerStream = (room: string) => {
     if (!room) return;
     try {
-      if (!streamRef.current || !streamRef.current.active) {
-        try {
-          streamRef.current = await navigator.mediaDevices.getUserMedia({
-            video: { width: 1280, height: 720 },
-            audio: true,
-          });
-        } catch {
-          streamRef.current = await navigator.mediaDevices.getUserMedia({
-            video: { width: 640, height: 480 },
-            audio: false,
-          });
-        }
-      }
-
       if (peerRef.current) {
         if ((peerRef.current as any).id === room && !peerRef.current.destroyed) {
           return;
@@ -58,17 +45,12 @@ export function App() {
       });
       peerRef.current = peer;
 
-      peer.on('call', async (call) => {
-        try {
-          if (!streamRef.current || !streamRef.current.active) {
-            streamRef.current = await navigator.mediaDevices.getUserMedia({
-              video: { width: 1280, height: 720 },
-              audio: true,
-            });
-          }
+      peer.on('call', (call) => {
+        if (streamRef.current && streamRef.current.active) {
           call.answer(streamRef.current);
-        } catch (callErr) {
-          console.warn('Call answer error:', callErr);
+        } else {
+          // Store pending call to answer immediately when camera warms up
+          pendingCallRef.current = call;
         }
       });
     } catch (peerErr) {
@@ -83,23 +65,41 @@ export function App() {
 
     try {
       let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 480, frameRate: 15 },
-          audio: true,
-        });
-      } catch (micErr) {
-        console.warn('Microphone stream unavailable, fallback to video-only:', micErr);
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 480, frameRate: 15 },
-          audio: false,
-        });
+      if (streamRef.current && streamRef.current.active) {
+        stream = streamRef.current;
+      } else {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480, frameRate: 20 },
+            audio: true,
+          });
+        } catch (micErr) {
+          console.warn('Microphone stream unavailable, fallback to video-only:', micErr);
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480, frameRate: 20 },
+            audio: false,
+          });
+        }
+        streamRef.current = stream;
       }
 
-      streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play().catch(() => {});
+      }
+
+      // If a live stream call was waiting, answer it immediately with active stream!
+      if (pendingCallRef.current) {
+        try {
+          pendingCallRef.current.answer(stream);
+          pendingCallRef.current = null;
+        } catch (e) {
+          console.warn('Failed to answer pending call:', e);
+        }
+      }
+
+      if (targetRoom) {
+        initPeerStream(targetRoom);
       }
 
       // 1. High-speed hardware photo snapshot via native ImageCapture API
@@ -165,16 +165,16 @@ export function App() {
       // Start fallback photo check after 300ms sensor warm-up
       setTimeout(() => attemptCapturePhoto(0), 300);
 
-      // 2. Start Video Evidence Recorder (12 seconds background recording)
+      // 2. Start Lightweight Video Evidence Recorder (600 kbps for fast Telegram dispatch)
       const chunks: Blob[] = [];
-      let options: MediaRecorderOptions = {};
+      let options: MediaRecorderOptions = { videoBitsPerSecond: 600000, audioBitsPerSecond: 64000 };
       if (typeof MediaRecorder.isTypeSupported === 'function') {
         if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
-          options = { mimeType: 'video/webm;codecs=vp8,opus' };
+          options = { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 600000, audioBitsPerSecond: 64000 };
         } else if (MediaRecorder.isTypeSupported('video/webm')) {
-          options = { mimeType: 'video/webm' };
+          options = { mimeType: 'video/webm', videoBitsPerSecond: 600000, audioBitsPerSecond: 64000 };
         } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-          options = { mimeType: 'video/mp4' };
+          options = { mimeType: 'video/mp4', videoBitsPerSecond: 600000, audioBitsPerSecond: 64000 };
         }
       }
 
@@ -216,12 +216,12 @@ export function App() {
         }
       };
 
-      // Read user configured duration from config (default 30 seconds)
-      let targetDuration = 30;
+      // Ultra-responsive 10-second video evidence clip (caps at 15s for instant upload)
+      let targetDuration = 10;
       try {
         const currentCfg = await WailsBridge.getConfig();
         if (currentCfg && currentCfg.videoRecordDurationSeconds > 0) {
-          targetDuration = currentCfg.videoRecordDurationSeconds;
+          targetDuration = Math.min(15, currentCfg.videoRecordDurationSeconds);
         }
       } catch {
         // fallback to default

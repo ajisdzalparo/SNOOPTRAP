@@ -49,13 +49,15 @@ type App struct {
 	isQuitting         bool
 
 	// Intentional Activity Detection (Filters accidental desk bumps / shifts)
-	armedKeypressCount   int
-	armedMouseClickCount int
-	armedMouseMovedTicks int
-	armedTotalDistance   float64
-	lastArmedActivityAt  time.Time
-	prevArmedCursorX     int32
-	prevArmedCursorY     int32
+	armedKeypressCount          int
+	armedMouseClickCount        int
+	armedMouseMovedTicks        int
+	armedTotalDistance          float64
+	lastArmedActivityAt         time.Time
+	prevArmedCursorX            int32
+	prevArmedCursorY            int32
+	suspiciousActivityStartedAt time.Time
+	consecutiveInputTicks       int
 }
 
 // NewApp creates a new App application struct
@@ -267,68 +269,65 @@ func (a *App) startIdleMonitor() {
 				continue
 			}
 
-			// 2. If system is Armed, monitor for confirmed intentional laptop usage
+			// 2. If system is Armed, monitor for confirmed intentional laptop usage (sustained over 3 seconds)
 			if currentState == "ARMED" {
 				curX, curY, _ := idle.GetCursorPos()
 				isMouseClicked := idle.IsMouseButtonPressed()
-
-				a.mu.Lock()
-				// Decay activity window if no activity within last 4 seconds
-				if time.Since(a.lastArmedActivityAt) > 4*time.Second {
-					a.armedKeypressCount = 0
-					a.armedMouseClickCount = 0
-					a.armedMouseMovedTicks = 0
-					a.armedTotalDistance = 0
-				}
-
-				if isMouseClicked {
-					a.armedMouseClickCount++
-					a.lastArmedActivityAt = time.Now()
-				}
 
 				// Measure cursor displacement since last sample
 				stepDx := float64(curX - a.prevArmedCursorX)
 				stepDy := float64(curY - a.prevArmedCursorY)
 				stepDist := math.Hypot(stepDx, stepDy)
-				if stepDist > 25.0 {
-					// Meaningful cursor move
-					a.armedMouseMovedTicks++
-					a.armedTotalDistance += stepDist
-					a.lastArmedActivityAt = time.Now()
-				}
 				a.prevArmedCursorX = curX
 				a.prevArmedCursorY = curY
 
+				hasActiveMovement := stepDist > 25.0
+				now := time.Now()
+
+				a.mu.Lock()
+				hasKeystrokes := a.armedKeypressCount > 0
+				hasInputNow := hasActiveMovement || isMouseClicked || hasKeystrokes
+
+				if hasInputNow {
+					if a.suspiciousActivityStartedAt.IsZero() {
+						a.suspiciousActivityStartedAt = now
+						a.consecutiveInputTicks = 1
+					} else {
+						a.consecutiveInputTicks++
+					}
+					a.lastArmedActivityAt = now
+				} else {
+					// If input stops for more than 1.5 seconds, reset accumulator!
+					// (Accidental desk bumps or moving laptop stop within 1s)
+					if !a.suspiciousActivityStartedAt.IsZero() && time.Since(a.lastArmedActivityAt) > 1500*time.Millisecond {
+						a.suspiciousActivityStartedAt = time.Time{}
+						a.consecutiveInputTicks = 0
+						a.armedKeypressCount = 0
+					}
+				}
+
+				activityDuration := time.Duration(0)
+				if !a.suspiciousActivityStartedAt.IsZero() {
+					activityDuration = time.Since(a.suspiciousActivityStartedAt)
+				}
+				ticks := a.consecutiveInputTicks
 				kpCount := a.armedKeypressCount
-				clickCount := a.armedMouseClickCount
-				movedTicks := a.armedMouseMovedTicks
-				totDist := a.armedTotalDistance
 				isAuto := a.isAutoArmed
 				armedSince := time.Since(a.armedAt)
 				a.mu.Unlock()
 
-				// Evaluation: Filter out accidental desk bumps, vibrations, or lifting/moving laptop:
-				// - Desk bump / vibration: mouse moves 20-50px in 1 tick, 0 clicks, 0 keys -> ignored
-				// - Moving laptop: mouse glides 100-150px, maybe 1 accidental edge keypress -> ignored
-				// Genuine laptop usage requires:
-				// 1. Mouse Click: someone clicked on the screen (>= 1 click)
-				// 2. Typing: someone pressed at least 3 keystrokes (>= 3 keys)
-				// 3. Sustained Mouse Navigation: mouse moved across >= 4 samples AND total distance >= 300px
-				// 4. Combined activity score >= 4
-				isIntentionalUse := clickCount >= 1 ||
-					kpCount >= 3 ||
-					(movedTicks >= 4 && totDist >= 300.0) ||
-					(clickCount*2 + kpCount + (movedTicks/2)) >= 4
-
-				if isIntentionalUse {
-					// Grace buffer for auto-arm: if user starts using within 3s of auto-arm, resume standby without alarm
-					if isAuto && armedSince < 3*time.Second {
-						a.addLog("[GUARD] Activity detected within 3s of auto-arm. Resuming standby.")
+				// Require sustained, consecutive input over 3 full seconds!
+				// Accidental bump or laptop relocation stops after 1s -> Cancelled!
+				// Only active usage continuing for 3 full seconds will trigger the trap!
+				if !a.suspiciousActivityStartedAt.IsZero() && activityDuration >= 3*time.Second && (ticks >= 8 || kpCount >= 3) {
+					// Grace buffer for auto-arm
+					if isAuto && armedSince < 4*time.Second {
+						a.addLog("[GUARD] Activity detected within 4s of auto-arm. Resuming standby.")
 						a.DisarmSystem("")
 						continue
 					}
 
-					a.addLog(fmt.Sprintf("[BREACH] Confirmed intentional usage! (Keys: %d, Clicks: %d, MoveTicks: %d, Dist: %.0fpx)", kpCount, clickCount, movedTicks, totDist))
+					a.addLog(fmt.Sprintf("[BREACH] Confirmed intentional usage sustained for %.1fs (%d ticks, %d keys)! Triggering trap...", activityDuration.Seconds(), ticks, kpCount))
 					a.TriggerTrap()
 				}
 			}
@@ -353,6 +352,8 @@ func (a *App) ArmSystem() {
 	a.armedMouseClickCount = 0
 	a.armedMouseMovedTicks = 0
 	a.armedTotalDistance = 0
+	a.suspiciousActivityStartedAt = time.Time{}
+	a.consecutiveInputTicks = 0
 	a.lastArmedActivityAt = time.Now()
 	botToken := a.cfg.TelegramBotToken
 	chatID := a.cfg.TelegramChatID
