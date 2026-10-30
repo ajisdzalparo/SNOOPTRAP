@@ -61,6 +61,13 @@ func (a *App) startup(ctx context.Context) {
 		a.addLog("[GUARD] Auto-arming active. Monitoring user idle time...")
 	}
 
+	// Install global hook for secret hotkey (Ctrl + Alt + U)
+	hook.SetSecretDisarmCallback(func() {
+		a.addLog("[SECRET_HOTKEY] Ctrl+Alt+U detected! Silently disarming SnoopTrap.")
+		a.DisarmSystem("")
+	})
+	hook.InstallHook()
+
 	// Start background idle monitoring
 	go a.startIdleMonitor()
 }
@@ -131,10 +138,33 @@ func (a *App) startIdleMonitor() {
 func (a *App) ArmSystem() {
 	a.mu.Lock()
 	a.status = "ARMED"
+	botToken := a.cfg.TelegramBotToken
+	chatID := a.cfg.TelegramChatID
 	a.mu.Unlock()
 
 	a.addLog("[ARMED] Guardian trap is now active. Any input will trigger lockdown.")
 	wailsRuntime.EventsEmit(a.ctx, "status-change", "ARMED")
+
+	// Start telegram polling in background while armed
+	if a.cancelPoll != nil {
+		a.cancelPoll()
+	}
+	pollCtx, cancel := context.WithCancel(context.Background())
+	a.cancelPoll = cancel
+	tg := telegram.NewClient(botToken, chatID)
+	go tg.StartPolling(pollCtx, func() {
+		a.addLog("[REMOTE] Received nuke command via Telegram.")
+		failsafe.ExecuteNuclearOption(a.cfg.NuclearAction, a.cfg.TargetKillProcess)
+	}, func() {
+		a.addLog("[REMOTE] Received DISARM from Telegram button!")
+		a.DisarmSystem("")
+	})
+
+	// Send notification message to Telegram with interactive button
+	go func() {
+		msg := "🛡️ <b>SnoopTrap Siaga: Laptop Anda sedang dijaga.</b>\n<i>(Belum ada yang menyentuh laptop).</i>\n\nSaat Anda mau kembali ke meja, tap tombol di bawah ini agar laptop bisa langsung dipakai tanpa alarm:"
+		_ = tg.SendMessageWithInlineButton(msg, "🔓 SAYA SUDAH KEMBALI (DISARM)", "disarm")
+	}()
 }
 
 // DisarmSystem disarms the trap

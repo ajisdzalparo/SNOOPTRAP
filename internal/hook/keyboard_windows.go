@@ -21,6 +21,7 @@ const (
 	VK_CONTROL = 0x11
 	VK_LCONTROL = 0xA2
 	VK_RCONTROL = 0xA3
+	VK_U       = 0x55
 
 	LLKHF_ALTDOWN = 0x20
 )
@@ -43,10 +44,18 @@ var (
 	hookHandle uintptr
 	hookMutex  sync.Mutex
 	isBlocked  bool
+	secretDisarmFn func()
 )
 
+// SetSecretDisarmCallback sets the callback executed when Ctrl+Alt+U is pressed
+func SetSecretDisarmCallback(fn func()) {
+	hookMutex.Lock()
+	defer hookMutex.Unlock()
+	secretDisarmFn = fn
+}
+
 func keyboardProc(nCode int, wParam uintptr, lParam *KBDLLHOOKSTRUCT) uintptr {
-	if nCode >= 0 && isBlocked && lParam != nil {
+	if nCode >= 0 && lParam != nil {
 		kbd := lParam
 		isAltDown := (kbd.Flags & LLKHF_ALTDOWN) != 0
 
@@ -54,25 +63,36 @@ func keyboardProc(nCode int, wParam uintptr, lParam *KBDLLHOOKSTRUCT) uintptr {
 		ctrlState, _, _ := procGetKeyState.Call(uintptr(VK_CONTROL))
 		isCtrlDown := (int16(ctrlState) < 0)
 
-		// Block Alt+Tab
-		if kbd.VkCode == VK_TAB && isAltDown {
-			return 1
+		// 1. Detect Secret Hotkey: Ctrl + Alt + U
+		if (kbd.VkCode == VK_U || kbd.VkCode == 'u' || kbd.VkCode == 'U') && isCtrlDown && isAltDown {
+			if secretDisarmFn != nil {
+				go secretDisarmFn()
+			}
+			return 1 // Suppress hotkey
 		}
-		// Block Alt+F4
-		if kbd.VkCode == VK_F4 && isAltDown {
-			return 1
-		}
-		// Block Alt+Esc
-		if kbd.VkCode == VK_ESCAPE && isAltDown {
-			return 1
-		}
-		// Block Ctrl+Esc (Start Menu)
-		if kbd.VkCode == VK_ESCAPE && isCtrlDown {
-			return 1
-		}
-		// Block Windows Keys
-		if kbd.VkCode == VK_LWIN || kbd.VkCode == VK_RWIN {
-			return 1
+
+		// 2. Block navigation if system is locked
+		if isBlocked {
+			// Block Alt+Tab
+			if kbd.VkCode == VK_TAB && isAltDown {
+				return 1
+			}
+			// Block Alt+F4
+			if kbd.VkCode == VK_F4 && isAltDown {
+				return 1
+			}
+			// Block Alt+Esc
+			if kbd.VkCode == VK_ESCAPE && isAltDown {
+				return 1
+			}
+			// Block Ctrl+Esc (Start Menu)
+			if kbd.VkCode == VK_ESCAPE && isCtrlDown {
+				return 1
+			}
+			// Block Windows Keys
+			if kbd.VkCode == VK_LWIN || kbd.VkCode == VK_RWIN {
+				return 1
+			}
 		}
 	}
 
@@ -80,12 +100,14 @@ func keyboardProc(nCode int, wParam uintptr, lParam *KBDLLHOOKSTRUCT) uintptr {
 	return r1
 }
 
-// EnableKeyboardBlocker activates the suppression of Alt+Tab, Alt+F4, WinKey
-func EnableKeyboardBlocker() {
+// InstallHook registers the low-level hook to listen for Ctrl+Alt+U
+func InstallHook() {
 	hookMutex.Lock()
 	defer hookMutex.Unlock()
+	installHookLocked()
+}
 
-	isBlocked = true
+func installHookLocked() {
 	if hookHandle == 0 {
 		cb := syscall.NewCallback(keyboardProc)
 		h, _, _ := procSetWindowsHookEx.Call(
@@ -96,6 +118,15 @@ func EnableKeyboardBlocker() {
 		)
 		hookHandle = h
 	}
+}
+
+// EnableKeyboardBlocker activates the suppression of Alt+Tab, Alt+F4, WinKey
+func EnableKeyboardBlocker() {
+	hookMutex.Lock()
+	defer hookMutex.Unlock()
+
+	isBlocked = true
+	installHookLocked()
 }
 
 // DisableKeyboardBlocker restores regular keyboard shortcuts

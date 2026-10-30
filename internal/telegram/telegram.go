@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -26,7 +27,7 @@ func NewClient(botToken, chatID string) *Client {
 		botToken: botToken,
 		chatID:   chatID,
 		client: &http.Client{
-			Timeout: 15 * time.Second,
+			Timeout: 60 * time.Second,
 		},
 	}
 }
@@ -89,11 +90,13 @@ func (c *Client) SendPhotoWithOTP(otp string, imageBase64 string) error {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		_ = c.SendAlertMessage(fmt.Sprintf("⚠️ <b>ALERT: Ada yang menyentuh laptop lu!</b>\n\n🔑 Masukkan OTP ini di layar untuk unlock: <code>%s</code>\n🕒 Waktu: %s", otp, time.Now().Format("2006-01-02 15:04:05")))
 		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_ = c.SendAlertMessage(fmt.Sprintf("⚠️ <b>ALERT: Ada yang menyentuh laptop lu!</b>\n\n🔑 Masukkan OTP ini di layar untuk unlock: <code>%s</code>\n🕒 Waktu: %s", otp, time.Now().Format("2006-01-02 15:04:05")))
 		respBytes, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("telegram api returned status %d: %s", resp.StatusCode, string(respBytes))
 	}
@@ -147,6 +150,9 @@ func (c *Client) dispatchVideoPayload(endpoint, fieldName, filename string, data
 	replyMarkup := `{"inline_keyboard":[[{"text":"🔓 SAYA SENDIRI (DISARM)","callback_data":"disarm"}],[{"text":"🚨 KUNCI PERMANEN (NUKE)","callback_data":"nuke"}]]}`
 	_ = writer.WriteField("reply_markup", replyMarkup)
 
+	replyMarkup = `{"inline_keyboard":[[{"text":"🔓 SAYA SENDIRI (DISARM)","callback_data":"disarm"}],[{"text":"🚨 KUNCI PERMANEN (NUKE)","callback_data":"nuke"}]]}`
+	_ = writer.WriteField("reply_markup", replyMarkup)
+
 	h := make(textproto.MIMEHeader)
 	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldName, filename))
 	h.Set("Content-Type", "video/mp4")
@@ -182,6 +188,53 @@ func (c *Client) dispatchVideoPayload(endpoint, fieldName, filename string, data
 	return nil
 }
 
+// SendMessageWithInlineButton sends a message with an interactive inline button
+func (c *Client) SendMessageWithInlineButton(text, buttonText, callbackData string) error {
+	if c.botToken == "" || c.chatID == "" {
+		return fmt.Errorf("bot token or chat ID not set")
+	}
+
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", c.botToken)
+	replyMarkup := fmt.Sprintf(`{"inline_keyboard":[[{"text":"%s","callback_data":"%s"}]]}`, buttonText, callbackData)
+
+	payload := map[string]string{
+		"chat_id":      c.chatID,
+		"text":         text,
+		"parse_mode":   "HTML",
+		"reply_markup": replyMarkup,
+	}
+
+	jsonBytes, _ := json.Marshal(payload)
+	resp, err := c.client.Post(apiURL, "application/json", bytes.NewBuffer(jsonBytes))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// SendAlertMessage sends a text-only alert to Telegram
+func (c *Client) SendAlertMessage(message string) error {
+	if c.botToken == "" || c.chatID == "" {
+		return fmt.Errorf("bot token or chat ID not set")
+	}
+
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", c.botToken)
+	payload := map[string]string{
+		"chat_id":    c.chatID,
+		"text":       message,
+		"parse_mode": "HTML",
+	}
+
+	jsonBytes, _ := json.Marshal(payload)
+	resp, err := c.client.Post(apiURL, "application/json", bytes.NewBuffer(jsonBytes))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // StartPolling listens for remote commands and inline button taps
 func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func()) {
 	if c.botToken == "" {
@@ -197,8 +250,8 @@ func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			url := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates?offset=%d&timeout=2", c.botToken, offset)
-			resp, err := c.client.Get(url)
+			updateURL := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates?offset=%d&timeout=2", c.botToken, offset)
+			resp, err := c.client.Get(updateURL)
 			if err != nil {
 				continue
 			}
@@ -227,13 +280,19 @@ func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(
 					// 1. Handle Inline Button Clicks
 					if u.CallbackQuery != nil {
 						cb := u.CallbackQuery
-						answerURL := fmt.Sprintf("https://api.telegram.org/bot%s/answerCallbackQuery?callback_query_id=%s&text=Perintah+Diterima", c.botToken, cb.ID)
-						_, _ = c.client.Get(answerURL)
-
-						if (cb.Data == "disarm" || cb.Data == "unlock") && onUnlock != nil {
-							onUnlock()
-						} else if (cb.Data == "nuke" || cb.Data == "alarm") && onNuke != nil {
-							onNuke()
+						if cb.Data == "disarm" || cb.Data == "unlock" {
+							answerURL := fmt.Sprintf("https://api.telegram.org/bot%s/answerCallbackQuery?callback_query_id=%s&text=%s", c.botToken, cb.ID, url.QueryEscape("✅ SnoopTrap Disarmed. Selamat bekerja kembali!"))
+							_, _ = c.client.Get(answerURL)
+							_ = c.SendAlertMessage("✅ <b>SnoopTrap Disarmed!</b>\nSelamat bekerja kembali, sistem penjagaan dinonaktifkan.")
+							if onUnlock != nil {
+								onUnlock()
+							}
+						} else if cb.Data == "nuke" || cb.Data == "alarm" {
+							answerURL := fmt.Sprintf("https://api.telegram.org/bot%s/answerCallbackQuery?callback_query_id=%s&text=%s", c.botToken, cb.ID, url.QueryEscape("🚨 Perintah Nuke Diterima!"))
+							_, _ = c.client.Get(answerURL)
+							if onNuke != nil {
+								onNuke()
+							}
 						}
 					}
 

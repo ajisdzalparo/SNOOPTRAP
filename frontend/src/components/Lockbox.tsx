@@ -34,6 +34,7 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const hasCapturedPhoto = useRef(false);
 
   // Live timestamp clock
   useEffect(() => {
@@ -82,18 +83,20 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
 
-          // 1. Instant Photo Snapshot (within 350ms) for immediate Telegram 2FA alert & OTP
+          // 1. Instant Photo Snapshot (within 200ms) for immediate Telegram 2FA alert & OTP
           setTimeout(() => {
+            if (hasCapturedPhoto.current) return;
             if (videoRef.current && canvasRef.current) {
               const video = videoRef.current;
               const canvas = canvasRef.current;
-              canvas.width = video.videoWidth || 640;
-              canvas.height = video.videoHeight || 480;
+              canvas.width = 640;
+              canvas.height = 480;
 
               const ctx = canvas.getContext('2d');
               if (ctx) {
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const base64 = canvas.toDataURL('image/jpeg', 0.85);
+                hasCapturedPhoto.current = true;
+                ctx.drawImage(video, 0, 0, 640, 480);
+                const base64 = canvas.toDataURL('image/jpeg', 0.60);
 
                 WailsBridge.processIntruderCapture(base64)
                   .then((ok) => {
@@ -102,7 +105,7 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
                   .catch(() => setCameraStatus('NET_ERROR'));
               }
             }
-          }, 350);
+          }, 200);
 
           // 2. Start Video + Audio Recorder (4 seconds of live footage)
           try {
