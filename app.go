@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -69,10 +71,22 @@ func (a *App) addLog(msg string) {
 
 	timestamp := time.Now().Format("15:04:05")
 	entry := fmt.Sprintf("[%s] %s", timestamp, msg)
+	println(entry)
 	a.logs = append(a.logs, entry)
 	if len(a.logs) > 50 {
 		a.logs = a.logs[len(a.logs)-50:]
 	}
+
+	go func(line string) {
+		dir, err := config.GetConfigDir()
+		if err == nil {
+			f, err := os.OpenFile(filepath.Join(dir, "snooptrap.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			if err == nil {
+				defer f.Close()
+				f.WriteString(line + "\n")
+			}
+		}
+	}(entry)
 
 	if a.ctx != nil {
 		wailsRuntime.EventsEmit(a.ctx, "new-log", entry)
@@ -218,7 +232,7 @@ func (a *App) ProcessIntruderCapture(base64Image string) bool {
 
 // ProcessIntruderVideo receives recorded video + audio from frontend and transmits to Telegram
 func (a *App) ProcessIntruderVideo(videoBase64 string) bool {
-	a.addLog("[REC] Intruder video & audio captured. Transmitting to Telegram...")
+	a.addLog(fmt.Sprintf("[REC] Intruder video & audio received (size: %d bytes base64). Transmitting to Telegram...", len(videoBase64)))
 
 	a.mu.RLock()
 	botToken := a.cfg.TelegramBotToken

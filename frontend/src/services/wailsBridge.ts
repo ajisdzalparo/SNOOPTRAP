@@ -8,6 +8,7 @@ export interface Config {
   autoArm: boolean;
   nuclearAction: string;
   targetKillProcess: string;
+  videoRecordDurationSeconds: number;
 }
 
 export interface AudioDevice {
@@ -61,6 +62,7 @@ const mockConfig: Config = {
   autoArm: true,
   nuclearAction: 'lock',
   targetKillProcess: 'WhatsApp.exe',
+  videoRecordDurationSeconds: 120,
 };
 
 const mockLogs = [

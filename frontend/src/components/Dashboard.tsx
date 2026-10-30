@@ -29,6 +29,7 @@ export const Dashboard: FC<DashboardProps> = ({ onTriggerTrap, logs }) => {
     autoArm: true,
     nuclearAction: 'lock',
     targetKillProcess: 'WhatsApp.exe',
+    videoRecordDurationSeconds: 120,
   });
 
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
@@ -327,6 +328,28 @@ export const Dashboard: FC<DashboardProps> = ({ onTriggerTrap, logs }) => {
                   }
                   className="w-full bg-[#050505] border border-[#333] p-3 text-xs text-white focus:border-[#FF003C] focus:outline-none"
                 />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs text-[#8F8F8F]">
+                  VIDEO RECORDING DURATION (SECONDS)
+                </label>
+                <input
+                  type="number"
+                  min={10}
+                  max={300}
+                  value={config.videoRecordDurationSeconds || 120}
+                  onChange={(e) =>
+                    setConfig({
+                      ...config,
+                      videoRecordDurationSeconds: parseInt(e.target.value) || 120,
+                    })
+                  }
+                  className="w-full bg-[#050505] border border-[#333] p-3 text-xs text-white focus:border-[#FF003C] focus:outline-none"
+                />
+                <div className="text-[10px] text-[#8F8F8F]">
+                  Current: {config.videoRecordDurationSeconds || 120}s (2 minutes surveillance video + audio)
+                </div>
               </div>
 
               <div className="space-y-1">

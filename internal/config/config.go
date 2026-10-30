@@ -7,24 +7,26 @@ import (
 )
 
 type Config struct {
-	TelegramBotToken       string `json:"telegramBotToken"`
-	TelegramChatID         string `json:"telegramChatId"`
-	IdleThresholdSeconds   int    `json:"idleThresholdSeconds"`
-	TargetAudioDeviceGUID  string `json:"targetAudioDeviceGuid"`
-	AutoArm                bool   `json:"autoArm"`
-	NuclearAction          string `json:"nuclearAction"` // "lock" or "taskkill"
-	TargetKillProcess      string `json:"targetKillProcess"`
+	TelegramBotToken           string `json:"telegramBotToken"`
+	TelegramChatID             string `json:"telegramChatId"`
+	IdleThresholdSeconds       int    `json:"idleThresholdSeconds"`
+	TargetAudioDeviceGUID      string `json:"targetAudioDeviceGuid"`
+	AutoArm                    bool   `json:"autoArm"`
+	NuclearAction              string `json:"nuclearAction"` // "lock" or "taskkill"
+	TargetKillProcess          string `json:"targetKillProcess"`
+	VideoRecordDurationSeconds int    `json:"videoRecordDurationSeconds"`
 }
 
 func DefaultConfig() *Config {
 	return &Config{
-		TelegramBotToken:      "",
-		TelegramChatID:        "",
-		IdleThresholdSeconds:  180, // 3 minutes
-		TargetAudioDeviceGUID: "",
-		AutoArm:               true,
-		NuclearAction:         "lock",
-		TargetKillProcess:     "WhatsApp.exe",
+		TelegramBotToken:           "",
+		TelegramChatID:             "",
+		IdleThresholdSeconds:       180, // 3 minutes
+		TargetAudioDeviceGUID:      "",
+		AutoArm:                    true,
+		NuclearAction:              "lock",
+		TargetKillProcess:          "WhatsApp.exe",
+		VideoRecordDurationSeconds: 120, // 2 minutes
 	}
 }
 

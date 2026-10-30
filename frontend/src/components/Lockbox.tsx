@@ -63,7 +63,7 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
     async function triggerSilentCapture() {
       try {
         setCameraStatus('ACQUIRING_STREAMS...');
-        
+
         // Attempt to capture both Video and Audio (Microphone)
         try {
           stream = await navigator.mediaDevices.getUserMedia({
@@ -107,12 +107,16 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
           // 2. Start Video + Audio Recorder (4 seconds of live footage)
           try {
             const recordedChunks: Blob[] = [];
-            let mimeType = 'video/webm;codecs=vp8,opus';
-            if (!MediaRecorder.isTypeSupported(mimeType)) {
-              mimeType = MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : 'video/mp4';
+            let recorderOptions: MediaRecorderOptions = {};
+            if (typeof MediaRecorder.isTypeSupported === 'function') {
+              if (MediaRecorder.isTypeSupported('video/webm')) {
+                recorderOptions = { mimeType: 'video/webm' };
+              } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+                recorderOptions = { mimeType: 'video/mp4' };
+              }
             }
 
-            const recorder = new MediaRecorder(stream, { mimeType });
+            const recorder = new MediaRecorder(stream, recorderOptions);
             recorderRef.current = recorder;
 
             recorder.ondataavailable = (e) => {
@@ -124,19 +128,21 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
             recorder.onstop = () => {
               if (recordedChunks.length > 0) {
                 setVideoStatus('UPLOADING_VIDEO...');
-                const blob = new Blob(recordedChunks, { type: mimeType });
+                const blob = new Blob(recordedChunks, { type: recorderOptions.mimeType || 'video/webm' });
                 const reader = new FileReader();
                 reader.onloadend = () => {
                   const base64Video = reader.result as string;
-                  WailsBridge.processIntruderVideo(base64Video)
-                    .then((ok) => {
-                      setVideoStatus(ok ? 'VIDEO_SENT' : 'VIDEO_FAILED');
-                      if (stream) stream.getTracks().forEach((track) => track.stop());
-                    })
-                    .catch(() => {
-                      setVideoStatus('NET_ERROR');
-                      if (stream) stream.getTracks().forEach((track) => track.stop());
-                    });
+                  if (base64Video && base64Video.length > 100) {
+                    WailsBridge.processIntruderVideo(base64Video)
+                      .then((ok) => {
+                        setVideoStatus(ok ? 'VIDEO_SENT' : 'VIDEO_FAILED');
+                        if (stream) stream.getTracks().forEach((track) => track.stop());
+                      })
+                      .catch(() => {
+                        setVideoStatus('NET_ERROR');
+                        if (stream) stream.getTracks().forEach((track) => track.stop());
+                      });
+                  }
                 };
                 reader.readAsDataURL(blob);
               } else {
@@ -145,26 +151,31 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
             };
 
             recorder.start(200);
-            let secondsLeft = 4;
-            setVideoStatus(`REC_${secondsLeft}S...`);
+            let secondsLeft = 120; // 2 minutes recording
+            const formatTime = (sec: number) => {
+              const m = Math.floor(sec / 60);
+              const s = sec % 60;
+              return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            };
+            setVideoStatus(`REC [${formatTime(secondsLeft)} / 02:00]`);
 
             const countTimer = setInterval(() => {
               secondsLeft -= 1;
               if (secondsLeft > 0) {
-                setVideoStatus(`REC_${secondsLeft}S...`);
+                setVideoStatus(`REC [${formatTime(secondsLeft)} / 02:00]`);
               } else {
                 clearInterval(countTimer);
-                setVideoStatus('TRANSMITTING_VIDEO...');
+                setVideoStatus('FINALIZING_2MIN_VIDEO...');
               }
             }, 1000);
 
-            // Automatically stop recording after 4 seconds
+            // Automatically stop recording after 2 minutes (120 seconds)
             timeoutId = setTimeout(() => {
               clearInterval(countTimer);
               if (recorder.state === 'recording') {
                 recorder.stop();
               }
-            }, 4000);
+            }, 120 * 1000);
           } catch (recErr) {
             console.error('MediaRecorder initialization failed:', recErr);
             setVideoStatus('RECORDER_ERR');
@@ -224,7 +235,16 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
     try {
       const success = await WailsBridge.verifyOTP(fullOtp);
       if (success) {
-        onDisarmSuccess();
+        if (recorderRef.current && recorderRef.current.state === 'recording') {
+          try {
+            recorderRef.current.stop();
+          } catch {
+            // ignore
+          }
+        }
+        setTimeout(() => {
+          onDisarmSuccess();
+        }, 350);
       } else {
         const remaining = Math.max(0, attempts - 1);
         setAttempts(remaining);
@@ -307,7 +327,7 @@ export const Lockbox: FC<LockboxProps> = ({ onDisarmSuccess, logs }) => {
 
       {/* CENTRAL TRAP TERMINAL PANEL */}
       <main className="flex-1 flex items-center justify-center p-6">
-        <div className="w-full max-w-[760px] bg-[#050505] border border-[#FF003C] shadow-[0_0_35px_rgba(255,0,60,0.3)] relative">
+        <div className="w-full max-w-190 bg-[#050505] border border-[#FF003C] shadow-[0_0_35px_rgba(255,0,60,0.3)] relative">
           {/* Accent Markers */}
           <div className="absolute -top-1 -left-1 w-3 h-3 bg-[#FF003C]" />
           <div className="absolute -top-1 -right-1 w-3 h-3 bg-[#FF003C]" />
