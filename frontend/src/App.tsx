@@ -142,6 +142,60 @@ export function App() {
     }
   };
 
+  const recordIntruderAudioOnDemand = async () => {
+    try {
+      let micStream: MediaStream;
+      if (streamRef.current && streamRef.current.getAudioTracks().length > 0) {
+        micStream = new MediaStream(streamRef.current.getAudioTracks());
+      } else {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      }
+
+      let mime = 'audio/ogg';
+      if (typeof MediaRecorder.isTypeSupported === 'function') {
+        if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+          mime = 'audio/ogg;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          mime = 'audio/webm;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mime = 'audio/mp4';
+        }
+      }
+
+      const recorder = new MediaRecorder(micStream, { mimeType: mime, audioBitsPerSecond: 64000 });
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        if (chunks.length > 0) {
+          const blob = new Blob(chunks, { type: mime });
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const b64 = reader.result as string;
+            if (b64 && b64.length > 50) {
+              WailsBridge.processIntruderAudio(b64).catch(() => {});
+            }
+          };
+          reader.readAsDataURL(blob);
+        }
+      };
+
+      recorder.start(250);
+      setTimeout(() => {
+        if (recorder.state === 'recording') {
+          recorder.stop();
+        }
+      }, 10000);
+    } catch (err) {
+      console.error('On-demand audio recording error:', err);
+    }
+  };
+
   const stopAllStreaming = () => {
     if (frameIntervalRef.current) {
       clearInterval(frameIntervalRef.current);
@@ -445,6 +499,11 @@ export function App() {
     // Listen to on-demand photo capture command from Telegram (/foto)
     WailsBridge.onEvent('capture-photo-now', () => {
       capturePhotoOnDemand();
+    });
+
+    // Listen to on-demand audio recording command from Telegram (/suara /rekam)
+    WailsBridge.onEvent('record-audio-now', () => {
+      recordIntruderAudioOnDemand();
     });
 
     // Fetch initial logs & status

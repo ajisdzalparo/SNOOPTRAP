@@ -359,6 +359,12 @@ func (a *App) ensureTelegramListener() {
 				wailsRuntime.EventsEmit(a.ctx, "capture-photo-now", nil)
 			}
 		},
+		func() {
+			a.addLog("[REMOTE] Audio recording requested from Telegram! Emitting record-audio-now...")
+			if a.ctx != nil {
+				wailsRuntime.EventsEmit(a.ctx, "record-audio-now", nil)
+			}
+		},
 	)
 }
 
@@ -538,6 +544,7 @@ Laptop Anda sedang dijaga penuh (Mode Senyap). Jika mouse/keyboard digunakan ole
 🛡️ <b>/arm</b> — Aktifkan mode siaga
 🔓 <b>/disarm</b> — Matikan siaga / buka kuncian
 📸 <b>/foto</b> — Ambil foto penyusup terbaru via webcam
+🎙️ <b>/suara</b> — Rekam suara penyusup diam-diam (10 detik)
 🔊 <b>/alarm</b> — Bunyikan sirine keras (volume 100%)
 🔇 <b>/stopalarm</b> — Matikan bunyi sirine
 🔴 <b>/stream</b> — Tonton siaran langsung kamera & mic real-time
@@ -699,6 +706,31 @@ func (a *App) ProcessIntruderVideo(videoBase64 string) bool {
 	}
 
 	a.addLog(fmt.Sprintf("[NET] Telegram video dispatch failed: %v", err))
+	return false
+}
+
+// ProcessIntruderAudio receives recorded mic audio from frontend and transmits to Telegram
+func (a *App) ProcessIntruderAudio(audioBase64 string) bool {
+	a.addLog(fmt.Sprintf("[MIC] Recorded intruder audio received (size: %d bytes base64). Transmitting to Telegram...", len(audioBase64)))
+
+	a.mu.RLock()
+	botToken := a.cfg.TelegramBotToken
+	chatID := a.cfg.TelegramChatID
+	a.mu.RUnlock()
+
+	tg := telegram.NewClient(botToken, chatID)
+	caption := "🎙️ <b>REKAMAN SUARA PENYUSUP (10 DETIK)</b>\nAudio direkam secara diam-diam dari mikrofon laptop."
+	var err error
+	for attempt := 0; attempt < 5; attempt++ {
+		err = tg.SendAudioFile(audioBase64, caption)
+		if err == nil {
+			a.addLog("[NET] Intruder voice recording transmitted successfully to Telegram!")
+			return true
+		}
+		time.Sleep(2 * time.Second)
+	}
+
+	a.addLog(fmt.Sprintf("[NET] Telegram audio dispatch failed: %v", err))
 	return false
 }
 

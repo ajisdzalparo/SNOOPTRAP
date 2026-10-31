@@ -43,6 +43,7 @@ declare global {
           TriggerTrap: () => Promise<void>;
           ProcessIntruderCapture: (base64Image: string, photoIndex: number, totalPhotos: number) => Promise<boolean>;
           ProcessIntruderVideo: (base64Video: string) => Promise<boolean>;
+          ProcessIntruderAudio: (base64Audio: string) => Promise<boolean>;
           GetLogs: () => Promise<string[]>;
           GetStatus: () => Promise<SystemStatus>;
           TestTrap: () => Promise<void>;
@@ -144,6 +145,14 @@ export const WailsBridge = {
       return await window.go.main.App.ProcessIntruderVideo(base64Video);
     }
     console.log('Captured intruder video (mock, length):', base64Video.length);
+    return true;
+  },
+
+  async processIntruderAudio(base64Audio: string): Promise<boolean> {
+    if (window.go?.main?.App?.ProcessIntruderAudio) {
+      return await window.go.main.App.ProcessIntruderAudio(base64Audio);
+    }
+    console.log('Captured intruder audio (mock, length):', base64Audio.length);
     return true;
   },
 
