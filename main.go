@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"os"
+	"strings"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -19,12 +20,24 @@ func main() {
 
 	app := NewApp()
 
+	isAutoStart := false
+	for _, arg := range os.Args[1:] {
+		if strings.EqualFold(strings.TrimSpace(arg), "--autostart") {
+			isAutoStart = true
+			break
+		}
+	}
+	// Start hidden in system tray on Windows boot when ARMED or DISARMED,
+	// EXCEPT when TRIGGERED (immediately show fullscreen PIN Lockbox!)
+	startHidden := isAutoStart && app.InitialStatus() != "TRIGGERED"
+
 	err := wails.Run(&options.App{
 		Title:             "SnoopTrap // IntruderLens",
 		Width:             1024,
 		Height:            768,
 		MinWidth:          800,
 		MinHeight:         600,
+		StartHidden:       startHidden,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

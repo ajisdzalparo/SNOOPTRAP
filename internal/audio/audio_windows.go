@@ -6,6 +6,7 @@ import (
 	"math"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -18,10 +19,12 @@ type AudioDevice struct {
 }
 
 var (
-	winmmDll      = syscall.NewLazyDLL("winmm.dll")
-	procPlaySound = winmmDll.NewProc("PlaySoundW")
-	user32Audio   = syscall.NewLazyDLL("user32.dll")
-	procKeybd     = user32Audio.NewProc("keybd_event")
+	winmmDll       = syscall.NewLazyDLL("winmm.dll")
+	procPlaySound  = winmmDll.NewProc("PlaySoundW")
+	user32Audio    = syscall.NewLazyDLL("user32.dll")
+	procKeybd      = user32Audio.NewProc("keybd_event")
+	sirenOnce      sync.Once
+	sirenWavRemote []byte
 )
 
 const (
@@ -103,15 +106,19 @@ func GenerateSirenWav(durationSec int) []byte {
 	return buf.Bytes()
 }
 
-// PlayAlarmSiren unmutes, forces volume to 100%, and plays a sharp 2-second cyber alarm burst
+// PlayAlarmSiren unmutes, forces volume to 100%, and plays a 5-second high-urgency cyber alarm siren on remote command
 func PlayAlarmSiren() {
+	sirenOnce.Do(func() {
+		sirenWavRemote = GenerateSirenWav(5)
+	})
 	MaximizeMasterVolume()
-	wavBytes := GenerateSirenWav(2) // Concise 2-second sharp alarm burst
-	procPlaySound.Call(
-		uintptr(unsafe.Pointer(&wavBytes[0])),
-		0,
-		uintptr(SND_MEMORY|SND_ASYNC),
-	)
+	if len(sirenWavRemote) > 0 {
+		procPlaySound.Call(
+			uintptr(unsafe.Pointer(&sirenWavRemote[0])),
+			0,
+			uintptr(SND_MEMORY|SND_ASYNC),
+		)
+	}
 }
 
 // StopAlarm stops any running sound

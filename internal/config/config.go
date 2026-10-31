@@ -30,7 +30,7 @@ func DefaultConfig() *Config {
 		AutoArm:                    true,
 		NuclearAction:              "lock",
 		TargetKillProcess:          "WhatsApp.exe",
-		VideoRecordDurationSeconds: 30, // 30 seconds surveillance video + audio
+		VideoRecordDurationSeconds: 10, // 10 seconds surveillance video + audio
 		EmergencyMasterPIN:         "123456",
 		StreamServerHost:           "",
 		StreamServerPort:           "8080",
@@ -97,4 +97,75 @@ func SaveConfig(cfg *Config) error {
 	}
 
 	return os.WriteFile(path, data, 0644)
+}
+
+// RuntimeState persists security status across forced power-offs or system reboots
+type RuntimeState struct {
+	Status     string `json:"status"`     // "DISARMED", "ARMED", "TRIGGERED"
+	CurrentOTP string `json:"currentOtp"` // Active 6-digit OTP when TRIGGERED
+	RoomID     string `json:"roomId"`     // Stream room ID
+	UpdatedAt  int64  `json:"updatedAt"`
+}
+
+func GetStatePath() (string, error) {
+	dir, err := GetConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "state.json"), nil
+}
+
+func LoadState() *RuntimeState {
+	defaultState := &RuntimeState{Status: "DISARMED"}
+	path, err := GetStatePath()
+	if err != nil {
+		return defaultState
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return defaultState
+	}
+	var st RuntimeState
+	if err := json.Unmarshal(data, &st); err != nil {
+		return defaultState
+	}
+	if st.Status != "DISARMED" && st.Status != "ARMED" && st.Status != "TRIGGERED" {
+		st.Status = "DISARMED"
+	}
+	return &st
+}
+
+// SaveState writes state to disk and calls f.Sync() immediately so forced power-off never loses state
+func SaveState(st *RuntimeState) error {
+	path, err := GetStatePath()
+	if err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(st, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	tmpPath := path + ".tmp"
+	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	if err == nil {
+		_, writeErr := f.Write(data)
+		syncErr := f.Sync()
+		closeErr := f.Close()
+		if writeErr == nil && syncErr == nil && closeErr == nil {
+			if os.Rename(tmpPath, path) == nil {
+				return nil
+			}
+		}
+	}
+
+	// Fallback direct synchronous write
+	fDirect, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	_, writeErr := fDirect.Write(data)
+	_ = fDirect.Sync()
+	_ = fDirect.Close()
+	return writeErr
 }

@@ -42,6 +42,10 @@ export function GetStreamWebSocketURL() {
   return window['go']['main']['App']['GetStreamWebSocketURL']();
 }
 
+export function InitialStatus() {
+  return window['go']['main']['App']['InitialStatus']();
+}
+
 export function PlayRemoteVoice(arg1, arg2) {
   return window['go']['main']['App']['PlayRemoteVoice'](arg1, arg2);
 }

@@ -148,7 +148,7 @@ func (c *Client) sendMediaFile(url, fieldName, filename, mimeType string, data [
 		_ = writer.WriteField("supports_streaming", "true")
 	}
 
-	replyMarkup := `{"inline_keyboard":[[{"text":"🔓 SAYA SENDIRI (DISARM)","callback_data":"disarm"}],[{"text":"🚨 KUNCI PERMANEN (NUKE)","callback_data":"nuke"}]]}`
+	replyMarkup := `{"inline_keyboard":[[{"text":"🔓 SAYA SENDIRI (DISARM)","callback_data":"disarm"}],[{"text":"🔊 BUNYIKAN ALARM (100%)","callback_data":"alarm"},{"text":"🔇 STOP ALARM","callback_data":"stop_alarm"}],[{"text":"🚨 KUNCI PERMANEN (NUKE)","callback_data":"nuke"}]]}`
 	_ = writer.WriteField("reply_markup", replyMarkup)
 
 	h := make(textproto.MIMEHeader)
@@ -184,6 +184,38 @@ func (c *Client) sendMediaFile(url, fieldName, filename, mimeType string, data [
 		return fmt.Errorf("telegram api %s returned status %d: %s", fieldName, resp.StatusCode, string(respBytes))
 	}
 
+	return nil
+}
+
+// SendBreachAlertMessage sends the initial OTP & live stream alert with full remote control buttons (Disarm, Alarm, Stop Alarm, Nuke)
+func (c *Client) SendBreachAlertMessage(text string) error {
+	if c.botToken == "" || c.chatID == "" {
+		return fmt.Errorf("bot token or chat ID not set")
+	}
+
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", c.botToken)
+	replyMarkup := `{"inline_keyboard":[[{"text":"🔓 SAYA SENDIRI (DISARM)","callback_data":"disarm"}],[{"text":"🔊 BUNYIKAN ALARM (100%)","callback_data":"alarm"},{"text":"🔇 STOP ALARM","callback_data":"stop_alarm"}],[{"text":"🚨 KUNCI PERMANEN (NUKE)","callback_data":"nuke"}]]}`
+
+	payload := map[string]interface{}{
+		"chat_id":      c.chatID,
+		"text":         text,
+		"parse_mode":   "HTML",
+		"reply_markup": json.RawMessage(replyMarkup),
+	}
+
+	jsonBytes, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	resp, err := c.client.Post(apiURL, "application/json", bytes.NewBuffer(jsonBytes))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("telegram sendMessage error %d: %s", resp.StatusCode, string(b))
+	}
 	return nil
 }
 
@@ -331,7 +363,7 @@ func (c *Client) AnswerCallback(callbackID, text string) {
 }
 
 // StartPolling listens for remote commands, inline button taps, and voice broadcast messages with real-time HTTP long polling
-func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(), onAudioBroadcast func(audioBase64 string, mimeType string), onArm func(), onStatus func() string, onGetStreamURL func() string) {
+func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(), onAudioBroadcast func(audioBase64 string, mimeType string), onArm func(), onStatus func() string, onGetStreamURL func() string, onAlarm func(), onStopAlarm func()) {
 	if c.botToken == "" {
 		return
 	}
@@ -421,7 +453,17 @@ func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(
 								onArm()
 							}
 						}()
-					} else if cb.Data == "nuke" || cb.Data == "alarm" {
+					} else if cb.Data == "alarm" {
+						c.AnswerCallback(cb.ID, "🔊 Alarm Sirine 100% Dibunyikan!")
+						if onAlarm != nil {
+							go onAlarm()
+						}
+					} else if cb.Data == "stop_alarm" {
+						c.AnswerCallback(cb.ID, "🔇 Alarm Dihentikan!")
+						if onStopAlarm != nil {
+							go onStopAlarm()
+						}
+					} else if cb.Data == "nuke" {
 						c.AnswerCallback(cb.ID, "🚨 Mengunci Workstation!")
 						if onNuke != nil {
 							go onNuke()
@@ -484,6 +526,16 @@ func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(
 								_ = c.SendAlertMessage("⚠️ Menyiapkan feed live stream... Coba kirim /stream lagi dalam 2 detik.")
 							}
 						}()
+					} else if (txt == "/alarm" || txt == "/sirine" || txt == "/siren" || txt == "alarm" || txt == "sirine") && onAlarm != nil {
+						go func() {
+							onAlarm()
+							_ = c.SendBreachAlertMessage("🔊 <b>Alarm Sirine Dibunyikan (Volume 100%)!</b>\nTekan tombol di bawah untuk membunyikan lagi atau menghentikan sirine:")
+						}()
+					} else if (txt == "/stopalarm" || txt == "/stopsirine" || txt == "stopalarm") && onStopAlarm != nil {
+						go func() {
+							onStopAlarm()
+							_ = c.SendMessageWithInlineButton("🔇 <b>Alarm Sirine Dihentikan.</b>\nIngin membunyikan alarm lagi?", "🔊 BUNYIKAN ALARM (100%)", "alarm")
+						}()
 					} else if txt == "/nuke" && onNuke != nil {
 						go func() {
 							_ = c.SendAlertMessage("🚨 <b>Perintah Nuke Diterima!</b> Mengunci workstation dan menutup aplikasi.")
@@ -501,6 +553,8 @@ func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(
 Perintah yang tersedia:
 🛡️ <b>/arm</b> : Aktifkan mode siaga sekarang
 🔓 <b>/disarm</b> : Matikan siaga / buka kuncian
+🔊 <b>/alarm</b> : Bunyikan sirine alarm keras (volume 100%)
+🔇 <b>/stopalarm</b> : Hentikan bunyi sirine alarm
 🔴 <b>/stream</b> : Tonton siaran langsung kamera & mic real-time
 🎙️ <b>Kirim Voice Note (VN)</b> : Diputar langsung di speaker laptop (volume 100%)
 🚨 <b>/nuke</b> : Kunci Windows darurat

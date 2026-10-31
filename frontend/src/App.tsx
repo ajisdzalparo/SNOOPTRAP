@@ -6,6 +6,7 @@ import { WailsBridge } from './services/wailsBridge';
 export function App() {
   const [, setCurrentState] = useState<'DISARMED' | 'ARMED' | 'TRIGGERED'>('DISARMED');
   const [isLocked, setIsLocked] = useState<boolean>(false);
+  const [isInitializing, setIsInitializing] = useState<boolean>(true);
   const [recordingStatus, setRecordingStatus] = useState<'idle' | 'recording' | 'uploading' | 'uploaded' | 'failed'>('idle');
   const [recordingSecondsLeft, setRecordingSecondsLeft] = useState<number>(0);
   const [logs, setLogs] = useState<string[]>([]);
@@ -134,6 +135,15 @@ export function App() {
       ws.onerror = (e) => {
         console.warn('Live stream WebSocket warning:', e);
       };
+
+      ws.onclose = () => {
+        // Auto-reconnect in 3s if camera stream is still active (e.g. Wi-Fi connecting after forced reboot)
+        setTimeout(() => {
+          if (streamRef.current && streamRef.current.active && streamWsRef.current === ws) {
+            startWebSocketStream(targetRoom, streamRef.current);
+          }
+        }, 3000);
+      };
     } catch (err) {
       console.warn('Failed to start WebSocket streaming:', err);
     }
@@ -199,18 +209,18 @@ export function App() {
       setTimeout(() => captureAndSendPhoto(2, 3), 2000);
       setTimeout(() => captureAndSendPhoto(3, 3), 4000);
 
-      // 2. Start Lightweight Video Evidence Recorder (400 kbps, 5 seconds for fast Telegram dispatch)
+      // 2. Start Lightweight Video Evidence Recorder (350 kbps video + 48 kbps audio, 10 seconds ~490 KB MP4 for fast Telegram dispatch)
       const chunks: Blob[] = [];
-      let options: MediaRecorderOptions = { videoBitsPerSecond: 400000, audioBitsPerSecond: 48000 };
+      let options: MediaRecorderOptions = { videoBitsPerSecond: 350000, audioBitsPerSecond: 48000 };
       if (typeof MediaRecorder.isTypeSupported === 'function') {
         if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')) {
-          options = { mimeType: 'video/mp4;codecs=avc1', videoBitsPerSecond: 400000, audioBitsPerSecond: 48000 };
+          options = { mimeType: 'video/mp4;codecs=avc1', videoBitsPerSecond: 350000, audioBitsPerSecond: 48000 };
         } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-          options = { mimeType: 'video/mp4', videoBitsPerSecond: 400000, audioBitsPerSecond: 48000 };
+          options = { mimeType: 'video/mp4', videoBitsPerSecond: 350000, audioBitsPerSecond: 48000 };
         } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
-          options = { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 400000, audioBitsPerSecond: 48000 };
+          options = { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 350000, audioBitsPerSecond: 48000 };
         } else if (MediaRecorder.isTypeSupported('video/webm')) {
-          options = { mimeType: 'video/webm', videoBitsPerSecond: 400000, audioBitsPerSecond: 48000 };
+          options = { mimeType: 'video/webm', videoBitsPerSecond: 350000, audioBitsPerSecond: 48000 };
         }
       }
 
@@ -251,15 +261,15 @@ export function App() {
         }
       };
 
-      // Lightweight 5-second video evidence clip (caps at 6s for instant Telegram delivery)
-      let targetDuration = 5;
+      // Lightweight 10-second video evidence clip (~490 KB MP4 for fast Telegram delivery)
+      let targetDuration = 10;
       try {
         const currentCfg = await WailsBridge.getConfig();
-        if (currentCfg && currentCfg.videoRecordDurationSeconds > 0) {
-          targetDuration = Math.min(6, currentCfg.videoRecordDurationSeconds);
+        if (currentCfg && currentCfg.videoRecordDurationSeconds > 0 && currentCfg.videoRecordDurationSeconds <= 15) {
+          targetDuration = currentCfg.videoRecordDurationSeconds;
         }
       } catch {
-        // fallback to default
+        // fallback to default 10s
       }
 
       setRecordingStatus('recording');
@@ -306,13 +316,17 @@ export function App() {
       }
     });
 
-    WailsBridge.getStatus().then((status) => {
-      setCurrentState(status.state as any);
-      if (status.state === 'TRIGGERED') {
-        setIsLocked(true);
-        startBreachSurveillance();
-      }
-    });
+    WailsBridge.getStatus()
+      .then((status) => {
+        setCurrentState(status.state as any);
+        if (status.state === 'TRIGGERED') {
+          setIsLocked(true);
+          startBreachSurveillance();
+        }
+      })
+      .finally(() => {
+        setIsInitializing(false);
+      });
 
     // Listen to real-time events from Go backend
     WailsBridge.onEvent('new-log', (newLog: string) => {
@@ -409,7 +423,9 @@ export function App() {
         }}
       />
 
-      {isLocked ? (
+      {isInitializing ? (
+        <div className="w-screen h-screen bg-[#050505]" />
+      ) : isLocked ? (
         <Lockbox
           onDisarmSuccess={handleDisarmSuccess}
           logs={logs}

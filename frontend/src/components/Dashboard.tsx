@@ -29,7 +29,7 @@ export const Dashboard: FC<DashboardProps> = ({ onTriggerTrap, logs }) => {
     autoArm: true,
     nuclearAction: 'lock',
     targetKillProcess: 'WhatsApp.exe',
-    videoRecordDurationSeconds: 30,
+    videoRecordDurationSeconds: 10,
     emergencyMasterPin: '123456',
     streamServerHost: '',
     streamServerPort: '',

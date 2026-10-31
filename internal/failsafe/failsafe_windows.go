@@ -1,13 +1,18 @@
 package failsafe
 
 import (
+	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
+
+	"golang.org/x/sys/windows/registry"
 )
 
 type winRect struct {
@@ -385,4 +390,46 @@ func ExecuteNuclearOption(action string, targetProcess string) error {
 func GetForegroundWindowHandle() uintptr {
 	hwnd, _, _ := procGetForegroundWindow.Call()
 	return hwnd
+}
+
+// EnsureWindowsStartup registers SnoopTrap in HKCU\...\Run with zero startup delay so forced reboots immediately restore previous status
+func EnsureWindowsStartup() error {
+	exePath, err := os.Executable()
+	if err != nil || exePath == "" {
+		return err
+	}
+	exePath, _ = filepath.Abs(exePath)
+
+	// Skip temporary go-build / wails dev binaries; prefer installed binary if available
+	lower := strings.ToLower(exePath)
+	if strings.Contains(lower, "go-build") || strings.Contains(lower, "-dev") {
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData != "" {
+			installed := filepath.Join(localAppData, "Programs", "SnoopTrap", "snooptrap.exe")
+			if _, statErr := os.Stat(installed); statErr == nil {
+				exePath = installed
+			} else {
+				return nil
+			}
+		} else {
+			return nil
+		}
+	}
+
+	k, _, err := registry.CreateKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Run`, registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	cmdValue := fmt.Sprintf(`"%s" --autostart`, exePath)
+	err = k.SetStringValue("SnoopTrap", cmdValue)
+	_ = k.Close()
+
+	// Disable Windows 10/11 10-second Explorer startup delay so Lockbox appears immediately after Windows login
+	serKey, _, serErr := registry.CreateKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Explorer\Serialize`, registry.SET_VALUE)
+	if serErr == nil {
+		_ = serKey.SetDWordValue("StartupDelayInMSec", 0)
+		_ = serKey.Close()
+	}
+
+	return err
 }

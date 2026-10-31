@@ -47,6 +47,7 @@ type App struct {
 	initialCursorY     int32
 	isAutoArmed        bool
 	isQuitting         bool
+	restoredFromReboot bool
 
 	// Intentional Activity Detection (Filters accidental desk bumps / shifts)
 	armedKeypressCount          int
@@ -60,17 +61,62 @@ type App struct {
 	consecutiveInputTicks       int
 }
 
-// NewApp creates a new App application struct
+// NewApp creates a new App application struct and restores any persisted security state
 func NewApp() *App {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		cfg = config.DefaultConfig()
 	}
 
+	persisted := config.LoadState()
+	initialStatus := "DISARMED"
+	initialOTP := ""
+	restored := false
+
+	if persisted.Status == "TRIGGERED" {
+		initialStatus = "TRIGGERED"
+		initialOTP = persisted.CurrentOTP
+		if initialOTP == "" {
+			initialOTP = telegram.GenerateOTP()
+		}
+		if persisted.RoomID != "" {
+			stream.SetCurrentRoomID(persisted.RoomID)
+		}
+		restored = true
+	} else if persisted.Status == "ARMED" {
+		initialStatus = "ARMED"
+		restored = true
+	}
+
 	return &App{
-		cfg:    cfg,
-		status: "DISARMED",
-		logs:   make([]string, 0),
+		cfg:                cfg,
+		status:             initialStatus,
+		currentOTP:         initialOTP,
+		restoredFromReboot: restored,
+		logs:               make([]string, 0),
+	}
+}
+
+// InitialStatus returns the startup state before Wails initializes the window
+func (a *App) InitialStatus() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.status
+}
+
+// persistState flushes the current security status & OTP synchronously to disk so forced power-offs cannot clear the trap
+func (a *App) persistState() {
+	a.mu.RLock()
+	st := &config.RuntimeState{
+		Status:     a.status,
+		CurrentOTP: a.currentOTP,
+		RoomID:     stream.GetCurrentRoomID(),
+		UpdatedAt:  time.Now().Unix(),
+	}
+	a.mu.RUnlock()
+
+	if err := config.SaveState(st); err != nil {
+		println("[STATE] Failed to persist state:", err.Error())
 	}
 }
 
@@ -80,9 +126,11 @@ func (a *App) startup(ctx context.Context) {
 	a.addLog("[INIT] SnoopTrap IntruderLens Guardian initialized.")
 	a.addLog(fmt.Sprintf("[CONFIG] Idle Threshold: %ds | Target Audio: %s", a.cfg.IdleThresholdSeconds, a.cfg.TargetAudioDeviceGUID))
 
-	if a.cfg.AutoArm {
-		a.status = "DISARMED"
-		a.addLog("[GUARD] Auto-arming active. Monitoring user idle time...")
+	// Register in Windows Startup (HKCU\...\Run) with 0ms startup delay so forced reboots always re-engage SnoopTrap
+	if err := failsafe.EnsureWindowsStartup(); err != nil {
+		a.addLog(fmt.Sprintf("[WARN] Windows Startup registration warning: %v", err))
+	} else {
+		a.addLog("[SYSTEM] Windows Auto-Startup registered (persistent across reboots).")
 	}
 
 	// Install global hook for secret hotkey (Ctrl + Alt + U)
@@ -145,13 +193,99 @@ func (a *App) startup(ctx context.Context) {
 		},
 	})
 
+	// Restore previous status if laptop was forcibly powered off / restarted!
+	a.mu.Lock()
+	initialState := a.status
+	otp := a.currentOTP
+	botToken := a.cfg.TelegramBotToken
+	chatID := a.cfg.TelegramChatID
+	a.mu.Unlock()
+
+	if initialState == "TRIGGERED" {
+		a.addLog("[SECURITY] PERSISTENT LOCKDOWN RESTORED AFTER FORCED REBOOT! Re-engaging PIN Lockbox...")
+		wailsRuntime.WindowShow(a.ctx)
+		wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
+		wailsRuntime.WindowFullscreen(a.ctx)
+		hook.EnableKeyboardBlocker()
+		failsafe.StartLockdownWatchdog()
+
+		roomID := a.GetStreamRoomID()
+		a.persistState()
+
+		// Emit breach-triggered once frontend WebView2 finishes mounting
+		go func(rID, activeOTP string) {
+			time.Sleep(800 * time.Millisecond)
+			if a.ctx != nil {
+				wailsRuntime.EventsEmit(a.ctx, "breach-triggered", map[string]interface{}{
+					"otp":  activeOTP,
+					"room": rID,
+				})
+			}
+		}(roomID, otp)
+
+		// Alert owner on Telegram (retry up to 10 times every 3s while laptop Wi-Fi reconnects after boot)
+		if botToken != "" && chatID != "" {
+			go func(activeOTP string) {
+				liveURL := a.GetStreamURL()
+				tg := telegram.NewClient(botToken, chatID)
+				msg := fmt.Sprintf("🚨 <b>LAPTOP DINYALAKAN ULANG SAAT TERKUNCI (FORCED REBOOT)!</b>\n\nSeseorang mematikan paksa & menyalakan ulang laptop saat SnoopTrap terkunci! Tampilan kuncian PIN otomatis diaktifkan kembali!\n\n🔑 <b>KODE OTP AKTIF:</b> <code>%s</code>\n\n📡 <b>LIVE STREAM KAMERA:</b>\n%s\n\n🔇 <i>Mode Senyap aktif (alarm mati secara default). Tekan tombol di bawah jika ingin membunyikan sirine 100%%!</i>", activeOTP, liveURL)
+				for attempt := 0; attempt < 10; attempt++ {
+					a.mu.RLock()
+					stillTriggered := a.status == "TRIGGERED"
+					a.mu.RUnlock()
+					if !stillTriggered {
+						return
+					}
+					if tg.SendBreachAlertMessage(msg) == nil {
+						return
+					}
+					time.Sleep(3 * time.Second)
+				}
+			}(otp)
+		}
+	} else if initialState == "ARMED" {
+		curX, curY, _ := idle.GetCursorPos()
+		tick, _ := idle.GetLastInputTick()
+		a.mu.Lock()
+		a.armedAt = time.Now()
+		a.lastInputTickAtArm = tick
+		a.initialCursorX = curX
+		a.initialCursorY = curY
+		a.prevArmedCursorX = curX
+		a.prevArmedCursorY = curY
+		a.lastArmedActivityAt = time.Now()
+		a.mu.Unlock()
+		a.addLog("[ARMED] Persistent ARMED state restored after reboot! Guarding laptop...")
+
+		if botToken != "" && chatID != "" {
+			go func() {
+				tg := telegram.NewClient(botToken, chatID)
+				msg := "🛡️ <b>Laptop Dinyalakan Ulang — Mode Siaga (ARMED) Dipertahankan!</b>\nSnoopTrap otomatis melanjutkan status SIAGA sebelumnya. Jika mouse/keyboard digunakan, jebakan langsung aktif!"
+				for attempt := 0; attempt < 8; attempt++ {
+					a.mu.RLock()
+					stillArmed := a.status == "ARMED"
+					a.mu.RUnlock()
+					if !stillArmed {
+						return
+					}
+					if tg.SendMessageWithInlineButton(msg, "🔓 SAYA SENDIRI (DISARM)", "disarm") == nil {
+						return
+					}
+					time.Sleep(3 * time.Second)
+				}
+			}()
+		}
+	} else if a.cfg.AutoArm {
+		a.addLog("[GUARD] Auto-arming active. Monitoring user idle time...")
+	}
+
 	// Start background idle monitoring
 	go a.startIdleMonitor()
 
 	// Start local streaming viewer server
 	go stream.StartStreamServer()
 
-	// Start persistent Telegram remote listener (allows instant /arm, /disarm, VN broadcast anytime)
+	// Start persistent Telegram remote listener (allows instant /arm, /disarm, /alarm, VN broadcast anytime)
 	go a.ensureTelegramListener()
 }
 
@@ -203,6 +337,14 @@ func (a *App) ensureTelegramListener() {
 		},
 		func() string {
 			return a.GetStreamURL()
+		},
+		func() {
+			a.addLog("[REMOTE] Alarm siren triggered from Telegram! Maximizing volume to 100%...")
+			audio.PlayAlarmSiren()
+		},
+		func() {
+			a.addLog("[REMOTE] Alarm siren stopped from Telegram.")
+			audio.StopAlarm()
 		},
 	)
 }
@@ -365,6 +507,7 @@ func (a *App) ArmSystem() {
 	chatID := a.cfg.TelegramChatID
 	a.mu.Unlock()
 
+	a.persistState()
 	a.addLog("[ARMED] Guardian trap is now active. Guarding laptop (filtering bumps/shifts)...")
 	wailsRuntime.EventsEmit(a.ctx, "status-change", "ARMED")
 
@@ -376,11 +519,13 @@ func (a *App) ArmSystem() {
 		go func() {
 			tg := telegram.NewClient(botToken, chatID)
 			msg := `🛡️ <b>SnoopTrap Siaga Aktif!</b>
-Laptop Anda sedang dijaga penuh. Jika mouse/keyboard digunakan oleh orang lain, alarm & live feed kamera langsung terpicu!
+Laptop Anda sedang dijaga penuh (Mode Senyap). Jika mouse/keyboard digunakan oleh orang lain, kuncian layar & rekaman bukti kamera langsung terpicu tanpa suara!
 
 📋 <b>Panduan Perintah Telegram:</b>
 🛡️ <b>/arm</b> — Aktifkan mode siaga
 🔓 <b>/disarm</b> — Matikan siaga / buka kuncian
+🔊 <b>/alarm</b> — Bunyikan sirine keras (volume 100%)
+🔇 <b>/stopalarm</b> — Matikan bunyi sirine
 🔴 <b>/stream</b> — Tonton siaran langsung kamera & mic real-time
 🎙️ <b>Kirim VN (Voice Note)</b> — Suara Anda diputar di speaker laptop (volume 100%)
 🚨 <b>/nuke</b> — Kunci Windows darurat
@@ -413,6 +558,7 @@ func (a *App) DisarmSystem(passcode string) bool {
 	a.currentOTP = ""
 	a.mu.Unlock()
 
+	a.persistState()
 	hook.DisableKeyboardBlocker()
 	audio.StopAlarm()
 
@@ -430,7 +576,7 @@ func (a *App) DisarmSystem(passcode string) bool {
 	return true
 }
 
-// TriggerTrap initiates the lockbox trap with silent pre-alert recording
+// TriggerTrap initiates the lockbox trap in stealth silent mode (alarm muted unless triggered via Telegram)
 func (a *App) TriggerTrap() {
 	a.mu.Lock()
 	if a.status == "TRIGGERED" {
@@ -444,8 +590,12 @@ func (a *App) TriggerTrap() {
 	chatID := a.cfg.TelegramChatID
 	a.mu.Unlock()
 
-	a.addLog("[BREACH] UNAUTHORIZED INPUT DETECTED! INITIATING SILENT PRE-ALERT CAPTURE.")
-	a.addLog("[REC] Stealth camera & audio recording initiated before alert shock.")
+	// Consistent stream room & URL + immediately flush TRIGGERED state & OTP to disk (survives forced power-off!)
+	roomID := a.GetStreamRoomID()
+	a.persistState()
+
+	a.addLog("[BREACH] UNAUTHORIZED INPUT DETECTED! INITIATING SILENT STEALTH CAPTURE.")
+	a.addLog("[STEALTH] Silent lockdown active. Siren muted by default (awaiting remote /alarm trigger from Telegram).")
 
 	// 1. Immediately trap the intruder: Fullscreen, AlwaysOnTop, strict Keyboard Whitelist, and 50ms Win32 Lockdown Watchdog
 	wailsRuntime.WindowShow(a.ctx)
@@ -456,20 +606,23 @@ func (a *App) TriggerTrap() {
 	// Win32 Force Foreground, Task View/Taskbar Invisibility, Cursor Confinement & 50ms Watchdog
 	failsafe.StartLockdownWatchdog()
 
-	// Consistent WebRTC stream room & URL
-	roomID := a.GetStreamRoomID()
 	streamURL := a.GetStreamURL()
 
-	// 2. IMMEDIATELY send Telegram alert with OTP and Live Stream Link (do NOT wait for webcam!)
+	// 2. IMMEDIATELY send Telegram alert with OTP, Live Stream Link, and Remote Alarm / Disarm buttons!
 	if botToken != "" && chatID != "" {
 		go func(otp string, liveURL string) {
 			tg := telegram.NewClient(botToken, chatID)
-			msg := fmt.Sprintf("🚨 <b>PERINGATAN PENYUSUP (BREACH DETECTED)!</b>\n\nLaptop Anda baru saja digunakan oleh seseorang!\n\n🔑 <b>KODE OTP:</b> <code>%s</code>\n\n📡 <b>LIVE STREAM KAMERA:</b>\n%s\n\n<i>Mengambil 3 foto bukti dan rekaman video penyusup...</i>", otp, liveURL)
-			_ = tg.SendMessageWithInlineButton(msg, "🔓 SAYA SENDIRI (DISARM)", "disarm")
+			msg := fmt.Sprintf("🚨 <b>PERINGATAN PENYUSUP (BREACH DETECTED)!</b>\n\nLaptop Anda baru saja digunakan oleh seseorang!\n\n🔑 <b>KODE OTP:</b> <code>%s</code>\n\n📡 <b>LIVE STREAM KAMERA:</b>\n%s\n\n🔇 <i>Mode Senyap: Mengambil 3 foto & video 10 detik tanpa suara. Tekan <b>BUNYIKAN ALARM</b> di bawah jika ingin menyalakan sirine 100%%!</i>", otp, liveURL)
+			for attempt := 0; attempt < 5; attempt++ {
+				if tg.SendBreachAlertMessage(msg) == nil {
+					return
+				}
+				time.Sleep(3 * time.Second)
+			}
 		}(currentOTP, streamURL)
 	}
 
-	// 3. Notify frontend to immediately capture photo & start video recording in background!
+	// 3. Notify frontend to immediately capture 3 photos & start 10-second video recording in background!
 	wailsRuntime.EventsEmit(a.ctx, "breach-triggered", map[string]interface{}{
 		"otp":  currentOTP,
 		"room": roomID,
@@ -477,22 +630,9 @@ func (a *App) TriggerTrap() {
 
 	// 4. Ensure telegram polling is active for remote commands / buttons
 	a.ensureTelegramListener()
-
-	// 5. Short 2-second grace period before sharp alert shock
-	go func() {
-		time.Sleep(2 * time.Second)
-		a.mu.RLock()
-		isStillTriggered := (a.status == "TRIGGERED")
-		a.mu.RUnlock()
-
-		if isStillTriggered {
-			a.addLog("[TRAP] Grace expired without disarm. Engaging brief sharp alarm shock.")
-			audio.PlayAlarmSiren()
-		}
-	}()
 }
 
-// ProcessIntruderCapture receives webcam frame from frontend and transmits to Telegram
+// ProcessIntruderCapture receives webcam frame from frontend and transmits to Telegram (with network retry for post-reboot Wi-Fi)
 func (a *App) ProcessIntruderCapture(base64Image string, photoIndex int, totalPhotos int) bool {
 	if totalPhotos <= 0 {
 		totalPhotos = 3
@@ -510,19 +650,23 @@ func (a *App) ProcessIntruderCapture(base64Image string, photoIndex int, totalPh
 
 	tg := telegram.NewClient(botToken, chatID)
 	caption := fmt.Sprintf("📸 <b>BUKTI FOTO PENYUSUP (%d/%d)</b>\nWajah & aktivitas penyusup di laptop.", photoIndex, totalPhotos)
-	err := tg.SendPhotoOnly(base64Image, caption)
-	if err != nil {
-		a.addLog(fmt.Sprintf("[NET] Telegram photo %d/%d transmit failed: %v", photoIndex, totalPhotos, err))
-		return false
+	var err error
+	for attempt := 0; attempt < 5; attempt++ {
+		err = tg.SendPhotoOnly(base64Image, caption)
+		if err == nil {
+			a.addLog(fmt.Sprintf("[NET] Telegram photo %d/%d transmitted successfully!", photoIndex, totalPhotos))
+			return true
+		}
+		time.Sleep(3 * time.Second)
 	}
 
-	a.addLog(fmt.Sprintf("[NET] Telegram photo %d/%d transmitted successfully!", photoIndex, totalPhotos))
-	return true
+	a.addLog(fmt.Sprintf("[NET] Telegram photo %d/%d transmit failed: %v", photoIndex, totalPhotos, err))
+	return false
 }
 
-// ProcessIntruderVideo receives recorded video + audio from frontend and transmits to Telegram
+// ProcessIntruderVideo receives recorded video + audio from frontend and transmits to Telegram (with network retry)
 func (a *App) ProcessIntruderVideo(videoBase64 string) bool {
-	a.addLog(fmt.Sprintf("[REC] Intruder video & audio received (size: %d bytes base64). Transmitting to Telegram...", len(videoBase64)))
+	a.addLog(fmt.Sprintf("[REC] Intruder 10s video & audio received (size: %d bytes base64). Transmitting to Telegram...", len(videoBase64)))
 
 	a.mu.RLock()
 	botToken := a.cfg.TelegramBotToken
@@ -530,14 +674,18 @@ func (a *App) ProcessIntruderVideo(videoBase64 string) bool {
 	a.mu.RUnlock()
 
 	tg := telegram.NewClient(botToken, chatID)
-	err := tg.SendVideo(videoBase64, "")
-	if err != nil {
-		a.addLog(fmt.Sprintf("[NET] Telegram video dispatch failed: %v", err))
-		return false
+	var err error
+	for attempt := 0; attempt < 5; attempt++ {
+		err = tg.SendVideo(videoBase64, "📹 <b>REKAMAN BUKTI PENYUSUP (10 DETIK VIDEO + AUDIO)</b>\nSistem merekam pergerakan & suara penyusup secara senyap.")
+		if err == nil {
+			a.addLog("[NET] Video & audio evidence transmitted successfully to Telegram!")
+			return true
+		}
+		time.Sleep(3 * time.Second)
 	}
 
-	a.addLog("[NET] Video & audio evidence transmitted successfully to Telegram!")
-	return true
+	a.addLog(fmt.Sprintf("[NET] Telegram video dispatch failed: %v", err))
+	return false
 }
 
 // VerifyOTP verifies the code entered by user
