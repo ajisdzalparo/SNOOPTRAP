@@ -26,7 +26,7 @@ export function GetStreamWebSocketURL():Promise<string>;
 
 export function PlayRemoteVoice(arg1:string,arg2:string):Promise<void>;
 
-export function ProcessIntruderCapture(arg1:string):Promise<boolean>;
+export function ProcessIntruderCapture(arg1:string,arg2:number,arg3:number):Promise<boolean>;
 
 export function ProcessIntruderVideo(arg1:string):Promise<boolean>;
 

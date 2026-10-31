@@ -1,11 +1,13 @@
 package stream
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -30,9 +32,10 @@ type localClient struct {
 }
 
 type localRoom struct {
-	host    *localClient
-	viewers map[*localClient]bool
-	mu      sync.RWMutex
+	host      *localClient
+	viewers   map[*localClient]bool
+	lastFrame []byte
+	mu        sync.RWMutex
 }
 
 const viewerHTML = `<!DOCTYPE html>
@@ -308,6 +311,9 @@ func handleLocalWebSocket(w http.ResponseWriter, r *http.Request) {
 		room.host = client
 	} else {
 		room.viewers[client] = true
+		if len(room.lastFrame) > 0 {
+			_ = client.conn.WriteMessage(websocket.TextMessage, room.lastFrame)
+		}
 	}
 	room.mu.Unlock()
 
@@ -321,20 +327,40 @@ func handleLocalWebSocket(w http.ResponseWriter, r *http.Request) {
 		room.mu.Unlock()
 	}()
 
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	go func() {
+		for range ticker.C {
+			if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(5*time.Second)); err != nil {
+				return
+			}
+		}
+	}()
+
 	for {
 		msgType, msg, err := conn.ReadMessage()
 		if err != nil {
 			break
 		}
-		room.mu.RLock()
 		if client.isHost {
+			if bytes.Contains(msg, []byte(`"type":"frame"`)) || bytes.Contains(msg, []byte(`"type": "frame"`)) {
+				room.mu.Lock()
+				room.lastFrame = msg
+				room.mu.Unlock()
+			}
+
+			room.mu.RLock()
 			for v := range room.viewers {
 				_ = v.conn.WriteMessage(msgType, msg)
 			}
-		} else if room.host != nil {
-			_ = room.host.conn.WriteMessage(msgType, msg)
+			room.mu.RUnlock()
+		} else {
+			room.mu.RLock()
+			if room.host != nil {
+				_ = room.host.conn.WriteMessage(msgType, msg)
+			}
+			room.mu.RUnlock()
 		}
-		room.mu.RUnlock()
 	}
 }
 

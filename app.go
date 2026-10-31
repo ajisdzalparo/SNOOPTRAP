@@ -457,7 +457,7 @@ func (a *App) TriggerTrap() {
 	if botToken != "" && chatID != "" {
 		go func(otp string, liveURL string) {
 			tg := telegram.NewClient(botToken, chatID)
-			msg := fmt.Sprintf("🚨 <b>PERINGATAN PENYUSUP (BREACH DETECTED)!</b>\n\nLaptop Anda baru saja digunakan oleh seseorang!\n\n🔑 <b>KODE OTP:</b> <code>%s</code>\n\n📡 <b>LIVE STREAM KAMERA:</b>\n%s\n\n<i>Klik link di atas atau tap tombol di bawah:</i>", otp, liveURL)
+			msg := fmt.Sprintf("🚨 <b>PERINGATAN PENYUSUP (BREACH DETECTED)!</b>\n\nLaptop Anda baru saja digunakan oleh seseorang!\n\n🔑 <b>KODE OTP:</b> <code>%s</code>\n\n📡 <b>LIVE STREAM KAMERA:</b>\n%s\n\n<i>Mengambil 3 foto bukti dan rekaman video penyusup...</i>", otp, liveURL)
 			_ = tg.SendMessageWithInlineButton(msg, "🔓 SAYA SENDIRI (DISARM)", "disarm")
 		}(currentOTP, streamURL)
 	}
@@ -486,24 +486,30 @@ func (a *App) TriggerTrap() {
 }
 
 // ProcessIntruderCapture receives webcam frame from frontend and transmits to Telegram
-func (a *App) ProcessIntruderCapture(base64Image string) bool {
-	a.addLog("[WEBCAM] Silent intruder frame captured via canvas.")
-	a.addLog("[NET] Dispatching multipart/form-data to Telegram Bot API...")
+func (a *App) ProcessIntruderCapture(base64Image string, photoIndex int, totalPhotos int) bool {
+	if totalPhotos <= 0 {
+		totalPhotos = 3
+	}
+	if photoIndex <= 0 {
+		photoIndex = 1
+	}
+	a.addLog(fmt.Sprintf("[WEBCAM] Silent intruder frame %d/%d captured via canvas.", photoIndex, totalPhotos))
+	a.addLog(fmt.Sprintf("[NET] Dispatching photo %d/%d to Telegram Bot API...", photoIndex, totalPhotos))
 
 	a.mu.RLock()
-	otp := a.currentOTP
 	botToken := a.cfg.TelegramBotToken
 	chatID := a.cfg.TelegramChatID
 	a.mu.RUnlock()
 
 	tg := telegram.NewClient(botToken, chatID)
-	err := tg.SendPhotoWithOTP(otp, base64Image)
+	caption := fmt.Sprintf("📸 <b>BUKTI FOTO PENYUSUP (%d/%d)</b>\nWajah & aktivitas penyusup di laptop.", photoIndex, totalPhotos)
+	err := tg.SendPhotoOnly(base64Image, caption)
 	if err != nil {
-		a.addLog(fmt.Sprintf("[NET] Telegram transmit failed: %v", err))
+		a.addLog(fmt.Sprintf("[NET] Telegram photo %d/%d transmit failed: %v", photoIndex, totalPhotos, err))
 		return false
 	}
 
-	a.addLog("[NET] Telegram alert & photo transmitted successfully!")
+	a.addLog(fmt.Sprintf("[NET] Telegram photo %d/%d transmitted successfully!", photoIndex, totalPhotos))
 	return true
 }
 

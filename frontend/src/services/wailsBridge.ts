@@ -41,7 +41,7 @@ declare global {
           DisarmSystem: (passcode: string) => Promise<boolean>;
           VerifyOTP: (code: string) => Promise<boolean>;
           TriggerTrap: () => Promise<void>;
-          ProcessIntruderCapture: (base64Image: string) => Promise<boolean>;
+          ProcessIntruderCapture: (base64Image: string, photoIndex: number, totalPhotos: number) => Promise<boolean>;
           ProcessIntruderVideo: (base64Video: string) => Promise<boolean>;
           GetLogs: () => Promise<string[]>;
           GetStatus: () => Promise<SystemStatus>;
@@ -131,9 +131,9 @@ export const WailsBridge = {
     }
   },
 
-  async processIntruderCapture(base64Image: string): Promise<boolean> {
+  async processIntruderCapture(base64Image: string, photoIndex: number = 1, totalPhotos: number = 3): Promise<boolean> {
     if (window.go?.main?.App) {
-      return await window.go.main.App.ProcessIntruderCapture(base64Image);
+      return await window.go.main.App.ProcessIntruderCapture(base64Image, photoIndex, totalPhotos);
     }
     console.log('Captured intruder image (mock, length):', base64Image.length);
     return true;

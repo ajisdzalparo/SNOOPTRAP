@@ -172,74 +172,45 @@ export function App() {
       // Start live stream broadcasting over WebSocket
       startWebSocketStream(targetRoom || '', stream);
 
-      // 1. High-speed hardware photo snapshot via native ImageCapture API
-      let photoCaptured = false;
-      const videoTrack = stream.getVideoTracks()[0];
-      if (videoTrack && typeof (window as any).ImageCapture !== 'undefined') {
-        try {
-          // @ts-ignore
-          const capturer = new window.ImageCapture(videoTrack);
-          capturer.takePhoto().then((blob: Blob) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              const base64 = reader.result as string;
-              if (base64 && base64.length > 500) {
-                photoCaptured = true;
-                WailsBridge.processIntruderCapture(base64).catch((err) => {
-                  console.warn('Process photo capture failed:', err);
-                });
-              }
-            };
-            reader.readAsDataURL(blob);
-          }).catch(() => {});
-        } catch {
-          // fallback to canvas below
-        }
-      }
-
-      // Canvas Snapshot Fallback
-      const attemptCapturePhoto = (attempt = 0) => {
-        if (photoCaptured) return;
-        if (!videoRef.current || !canvasRef.current) return;
-
+      // Helper function to capture an instant JPEG frame from active webcam stream
+      const captureFrame = (): string | null => {
         const v = videoRef.current;
         const c = canvasRef.current;
-
-        // If camera stream is not decoding frames yet, retry in 100ms
-        if (v.readyState < 2 || v.videoWidth === 0) {
-          if (attempt < 25) {
-            setTimeout(() => attemptCapturePhoto(attempt + 1), 100);
-          }
-          return;
-        }
-
+        if (!v || !c || v.readyState < 2 || v.videoWidth === 0) return null;
         c.width = v.videoWidth || 640;
         c.height = v.videoHeight || 480;
         const ctx = c.getContext('2d');
-        if (!ctx) return;
-
+        if (!ctx) return null;
         ctx.drawImage(v, 0, 0, c.width, c.height);
-
-        photoCaptured = true;
-        const photoBase64 = c.toDataURL('image/jpeg', 0.8);
-        WailsBridge.processIntruderCapture(photoBase64).catch((err) => {
-          console.warn('Process photo capture failed:', err);
-        });
+        return c.toDataURL('image/jpeg', 0.8);
       };
 
-      // Start fallback photo check after 300ms sensor warm-up
-      setTimeout(() => attemptCapturePhoto(0), 300);
+      const captureAndSendPhoto = (photoIdx: number, total: number, retry = 0) => {
+        const frame = captureFrame();
+        if (frame) {
+          WailsBridge.processIntruderCapture(frame, photoIdx, total).catch(() => {});
+        } else if (retry < 25) {
+          setTimeout(() => captureAndSendPhoto(photoIdx, total, retry + 1), 120);
+        }
+      };
 
-      // 2. Start Lightweight Video Evidence Recorder (600 kbps for fast Telegram dispatch)
+      // 1. Capture 3 photos separated by 2 seconds each (t=0s, t=2s, t=4s)
+      captureAndSendPhoto(1, 3);
+      setTimeout(() => captureAndSendPhoto(2, 3), 2000);
+      setTimeout(() => captureAndSendPhoto(3, 3), 4000);
+
+      // 2. Start Lightweight Video Evidence Recorder (400 kbps, 5 seconds for fast Telegram dispatch)
       const chunks: Blob[] = [];
-      let options: MediaRecorderOptions = { videoBitsPerSecond: 600000, audioBitsPerSecond: 64000 };
+      let options: MediaRecorderOptions = { videoBitsPerSecond: 400000, audioBitsPerSecond: 48000 };
       if (typeof MediaRecorder.isTypeSupported === 'function') {
-        if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
-          options = { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 600000, audioBitsPerSecond: 64000 };
-        } else if (MediaRecorder.isTypeSupported('video/webm')) {
-          options = { mimeType: 'video/webm', videoBitsPerSecond: 600000, audioBitsPerSecond: 64000 };
+        if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')) {
+          options = { mimeType: 'video/mp4;codecs=avc1', videoBitsPerSecond: 400000, audioBitsPerSecond: 48000 };
         } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-          options = { mimeType: 'video/mp4', videoBitsPerSecond: 600000, audioBitsPerSecond: 64000 };
+          options = { mimeType: 'video/mp4', videoBitsPerSecond: 400000, audioBitsPerSecond: 48000 };
+        } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+          options = { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 400000, audioBitsPerSecond: 48000 };
+        } else if (MediaRecorder.isTypeSupported('video/webm')) {
+          options = { mimeType: 'video/webm', videoBitsPerSecond: 400000, audioBitsPerSecond: 48000 };
         }
       }
 
@@ -268,7 +239,7 @@ export function App() {
                   setRecordingStatus('failed');
                 })
                 .finally(() => {
-                  // Keep live stream WebSocket running so owner can continue watching live feed!
+                  // Keep live stream WebSocket running continuously so owner can watch live feed!
                 });
             } else {
               setRecordingStatus('failed');
@@ -280,12 +251,12 @@ export function App() {
         }
       };
 
-      // Lightweight 6-second video evidence clip (caps at 8s for instant upload)
-      let targetDuration = 6;
+      // Lightweight 5-second video evidence clip (caps at 6s for instant Telegram delivery)
+      let targetDuration = 5;
       try {
         const currentCfg = await WailsBridge.getConfig();
         if (currentCfg && currentCfg.videoRecordDurationSeconds > 0) {
-          targetDuration = Math.min(8, currentCfg.videoRecordDurationSeconds);
+          targetDuration = Math.min(6, currentCfg.videoRecordDurationSeconds);
         }
       } catch {
         // fallback to default
