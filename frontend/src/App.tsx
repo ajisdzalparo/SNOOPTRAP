@@ -19,6 +19,128 @@ export function App() {
   const streamWsRef = useRef<WebSocket | null>(null);
   const frameIntervalRef = useRef<any>(null);
   const isRecordingRef = useRef<boolean>(false);
+  const sirenAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Directly route audio to internal laptop speakers (Speakers Realtek) even if headphones are plugged in
+  const routeAudioToLaptopSpeaker = async (audioElem: HTMLAudioElement) => {
+    try {
+      if (typeof (audioElem as any).setSinkId !== 'function') return;
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.enumerateDevices !== 'function') return;
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outputs = devices.filter((d) => d.kind === 'audiooutput');
+
+      // 1. Highest priority: "Speakers (Realtek(R) Audio)" or internal Realtek speaker
+      const realtekSpeaker = outputs.find(
+        (d) => /speaker/i.test(d.label) && /realtek/i.test(d.label) && !/headphone|headset|cable|virtual/i.test(d.label)
+      );
+      if (realtekSpeaker && realtekSpeaker.deviceId) {
+        await (audioElem as any).setSinkId(realtekSpeaker.deviceId);
+        console.log('[AUDIO_ROUTING] Routed to internal laptop speaker:', realtekSpeaker.label);
+        return;
+      }
+
+      // 2. Second priority: Any physical speaker that is not headphones
+      const genericSpeaker = outputs.find(
+        (d) => /speaker/i.test(d.label) && !/headphone|headset|cable|virtual/i.test(d.label)
+      );
+      if (genericSpeaker && genericSpeaker.deviceId) {
+        await (audioElem as any).setSinkId(genericSpeaker.deviceId);
+        console.log('[AUDIO_ROUTING] Routed to physical speaker:', genericSpeaker.label);
+      }
+    } catch (err) {
+      console.warn('[AUDIO_ROUTING] Failed to route audio to internal speaker:', err);
+    }
+  };
+
+  const playCyberAlarmSiren = async () => {
+    try {
+      if (sirenAudioRef.current) {
+        sirenAudioRef.current.pause();
+        sirenAudioRef.current = null;
+      }
+
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioContextClass();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const dest = ctx.createMediaStreamDestination();
+
+      osc.type = 'sawtooth';
+      const now = ctx.currentTime;
+      for (let i = 0; i < 5; i++) {
+        osc.frequency.setValueAtTime(800, now + i * 1.0);
+        osc.frequency.linearRampToValueAtTime(1800, now + i * 1.0 + 0.5);
+        osc.frequency.linearRampToValueAtTime(800, now + i * 1.0 + 1.0);
+      }
+      gain.gain.setValueAtTime(1.0, now);
+
+      osc.connect(gain);
+      gain.connect(dest);
+
+      const audioElem = new Audio();
+      audioElem.srcObject = dest.stream;
+      audioElem.volume = 1.0;
+      await routeAudioToLaptopSpeaker(audioElem);
+      await audioElem.play();
+      osc.start();
+      sirenAudioRef.current = audioElem;
+
+      setTimeout(() => {
+        try {
+          osc.stop();
+          ctx.close();
+          if (sirenAudioRef.current === audioElem) {
+            sirenAudioRef.current = null;
+          }
+        } catch {}
+      }, 5500);
+    } catch (e) {
+      console.warn('AudioContext siren error:', e);
+    }
+  };
+
+  const stopCyberAlarmSiren = () => {
+    if (sirenAudioRef.current) {
+      try {
+        sirenAudioRef.current.pause();
+        sirenAudioRef.current.srcObject = null;
+      } catch {}
+      sirenAudioRef.current = null;
+    }
+  };
+
+  const capturePhotoOnDemand = async () => {
+    try {
+      if (!streamRef.current || !streamRef.current.active) {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480, frameRate: 20 },
+          audio: false,
+        });
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+        await new Promise((r) => setTimeout(r, 400));
+      }
+
+      const v = videoRef.current;
+      const c = canvasRef.current;
+      if (!v || !c || v.readyState < 2 || v.videoWidth === 0) return;
+      c.width = v.videoWidth || 640;
+      c.height = v.videoHeight || 480;
+      const ctx = c.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(v, 0, 0, c.width, c.height);
+      const frameData = c.toDataURL('image/jpeg', 0.8);
+      if (frameData) {
+        await WailsBridge.processIntruderCapture(frameData, 1, 1);
+      }
+    } catch (err) {
+      console.error('On-demand photo capture failed:', err);
+    }
+  };
 
   const stopAllStreaming = () => {
     if (frameIntervalRef.current) {
@@ -294,19 +416,35 @@ export function App() {
   };
 
   useEffect(() => {
-    // Listen to remote voice broadcast from Telegram or Intercom
-    WailsBridge.onEvent('play-remote-audio', (payload: any) => {
+    // Listen to remote voice broadcast from Telegram or Intercom (routed directly to laptop speaker)
+    WailsBridge.onEvent('play-remote-audio', async (payload: any) => {
       try {
         const mime = payload?.mime || 'audio/ogg';
         const audioSrc = `data:${mime};base64,${payload?.audio}`;
         const audioElem = new Audio(audioSrc);
         audioElem.volume = 1.0;
+        await routeAudioToLaptopSpeaker(audioElem);
         audioElem.play().catch((err) => {
           console.error('Remote audio playback failed:', err);
         });
       } catch (err) {
         console.error('Remote audio error:', err);
       }
+    });
+
+    // Listen to remote alarm siren command from Telegram
+    WailsBridge.onEvent('play-alarm-siren', () => {
+      playCyberAlarmSiren();
+    });
+
+    // Listen to stop alarm command from Telegram
+    WailsBridge.onEvent('stop-alarm-siren', () => {
+      stopCyberAlarmSiren();
+    });
+
+    // Listen to on-demand photo capture command from Telegram (/foto)
+    WailsBridge.onEvent('capture-photo-now', () => {
+      capturePhotoOnDemand();
     });
 
     // Fetch initial logs & status

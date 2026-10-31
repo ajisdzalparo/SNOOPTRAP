@@ -71,18 +71,33 @@ func enumWindowsProc(hwnd uintptr, lParam uintptr) uintptr {
 	var pid uint32
 	procGetWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
 	if uintptr(pid) == enumSearchPid {
+		var clsBuf [128]uint16
+		clsLen, _, _ := procGetClassNameW.Call(hwnd, uintptr(unsafe.Pointer(&clsBuf[0])), 128)
+		clsName := ""
+		if clsLen > 0 {
+			clsName = syscall.UTF16ToString(clsBuf[:clsLen])
+		}
+
 		var buf [256]uint16
 		textLen, _, _ := procGetWindowTextW.Call(hwnd, uintptr(unsafe.Pointer(&buf[0])), 256)
+		title := ""
 		if textLen > 0 {
-			title := syscall.UTF16ToString(buf[:textLen])
-			if strings.Contains(title, "SnoopTrap") {
-				enumExactMatch = hwnd
-				return 0 // Found exact main Wails window, stop enumeration
-			}
+			title = syscall.UTF16ToString(buf[:textLen])
 		}
-		vis, _, _ := procIsWindowVisible.Call(hwnd)
+
+		// Wails v2 creates the primary window with class "wailsWindow"
+		if strings.EqualFold(clsName, "wailsWindow") || strings.Contains(strings.ToLower(clsName), "wails") {
+			enumExactMatch = hwnd
+			return 0 // Found exact main Wails window, stop enumeration
+		}
+
+		if strings.Contains(strings.ToLower(title), "snooptrap") {
+			enumExactMatch = hwnd
+			return 0
+		}
+
 		parent, _, _ := procGetParent.Call(hwnd)
-		if vis != 0 && parent == 0 && enumFallbackHwnd == 0 {
+		if parent == 0 && enumFallbackHwnd == 0 {
 			enumFallbackHwnd = hwnd
 		}
 	}
@@ -102,6 +117,28 @@ func GetAppWindowHWND() uintptr {
 		cachedAppHwnd = 0
 	}
 
+	// 1. Direct search by Wails native window class
+	wailsClassPtr, _ := syscall.UTF16PtrFromString("wailsWindow")
+	hwnd, _, _ := procFindWindowW.Call(uintptr(unsafe.Pointer(wailsClassPtr)), 0)
+	if hwnd != 0 {
+		var pid uint32
+		procGetWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
+		curPid, _, _ := procGetCurrentProcessId.Call()
+		if uintptr(pid) == curPid {
+			cachedAppHwnd = hwnd
+			return hwnd
+		}
+	}
+
+	// 2. Direct search by Window Title
+	ptr, _ := syscall.UTF16PtrFromString("SnoopTrap // IntruderLens")
+	hwnd, _, _ = procFindWindowW.Call(0, uintptr(unsafe.Pointer(ptr)))
+	if hwnd != 0 {
+		cachedAppHwnd = hwnd
+		return hwnd
+	}
+
+	// 3. Enumeration across current process threads
 	enumCbOnce.Do(func() {
 		enumCbPtr = syscall.NewCallback(enumWindowsProc)
 	})
@@ -118,15 +155,11 @@ func GetAppWindowHWND() uintptr {
 		return cachedAppHwnd
 	}
 	if enumFallbackHwnd != 0 {
+		cachedAppHwnd = enumFallbackHwnd
 		return enumFallbackHwnd
 	}
 
-	ptr, _ := syscall.UTF16PtrFromString("SnoopTrap // IntruderLens")
-	hwnd, _, _ := procFindWindowW.Call(0, uintptr(unsafe.Pointer(ptr)))
-	if hwnd != 0 {
-		cachedAppHwnd = hwnd
-	}
-	return hwnd
+	return 0
 }
 
 func getTargetScreenBounds() (x, y, w, h, primaryW, primaryH uintptr) {
@@ -369,12 +402,24 @@ func LockWindows() error {
 	return nil
 }
 
-// KillSensitiveProcess terminates specific sensitive process (e.g. WhatsApp.exe)
+// KillSensitiveProcess terminates specific sensitive processes (e.g. WhatsApp, browsers, messengers)
 func KillSensitiveProcess(processName string) error {
-	if strings.TrimSpace(processName) == "" {
-		processName = "WhatsApp.exe"
+	pName := strings.TrimSpace(processName)
+	if pName == "" || strings.EqualFold(pName, "WhatsApp.exe") || strings.EqualFold(pName, "WhatsApp") {
+		// Kill all variants of WhatsApp (UWP Store app: WhatsApp.Root.exe, Win32: WhatsApp.exe, and all child processes)
+		_ = exec.Command("taskkill", "/F", "/T", "/IM", "WhatsApp.Root.exe").Run()
+		_ = exec.Command("taskkill", "/F", "/T", "/IM", "WhatsApp.exe").Run()
+		_ = exec.Command("taskkill", "/F", "/T", "/IM", "WhatsApp*").Run()
+		_ = exec.Command("powershell", "-NoProfile", "-Command", "Get-Process *whatsapp* -ErrorAction SilentlyContinue | Stop-Process -Force").Run()
+		return nil
 	}
-	return exec.Command("taskkill", "/IM", processName, "/F").Run()
+
+	// For custom process configured by user
+	cleanName := strings.TrimSuffix(pName, ".exe")
+	_ = exec.Command("taskkill", "/F", "/T", "/IM", pName).Run()
+	_ = exec.Command("taskkill", "/F", "/T", "/IM", cleanName+".exe").Run()
+	_ = exec.Command("powershell", "-NoProfile", "-Command", fmt.Sprintf("Get-Process '%s*' -ErrorAction SilentlyContinue | Stop-Process -Force", cleanName)).Run()
+	return nil
 }
 
 // ExecuteNuclearOption triggers the configured fail-safe action

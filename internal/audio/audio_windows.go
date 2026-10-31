@@ -3,6 +3,7 @@ package audio
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"math"
 	"os/exec"
 	"strings"
@@ -126,30 +127,55 @@ func StopAlarm() {
 	procPlaySound.Call(0, 0, 0)
 }
 
-// GetAudioDevices lists system playback devices via PowerShell
+// GetAudioDevices lists system playback devices via Windows MMDevices registry
 func GetAudioDevices() ([]AudioDevice, error) {
 	cmd := exec.Command("powershell", "-NoProfile", "-Command", `
-		Get-CimInstance Win32_SoundDevice | Select-Object -Property DeviceID, Name | ConvertTo-Json -Compress
+		$list = @()
+		Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render' -ErrorAction SilentlyContinue | ForEach-Object {
+			$propPath = Join-Path $_.PSPath 'Properties'
+			if (Test-Path $propPath) {
+				$p = Get-Item $propPath
+				$type = $p.GetValue('{a45c254e-df1c-4efd-8020-67d146a850e0},2')
+				$dev = $p.GetValue('{b3f8fa53-0004-438e-9003-51a46e139bfc},6')
+				$state = (Get-ItemProperty $_.PSPath).'DeviceState'
+				if (($type -or $dev) -and ($state -eq 1)) {
+					$fullName = "$type ($dev)"
+					$isSpeaker = ($fullName -match 'Speaker' -or $dev -match 'Realtek') -and ($fullName -notmatch 'Headphone|Headset|Cable|Virtual')
+					$list += [PSCustomObject]@{
+						id = $_.PSChildName
+						name = $fullName
+						isDefault = [bool]$isSpeaker
+					}
+				}
+			}
+		}
+		if ($list.Count -gt 0) {
+			$list | ConvertTo-Json -Compress
+		}
 	`)
 	out, err := cmd.Output()
-	if err != nil {
-		// Fallback devices
-		return []AudioDevice{
-			{ID: "default", Name: "Default System Speaker / Output", IsDefault: true},
-			{ID: "internal", Name: "Realtek High Definition Audio (Internal)", IsDefault: false},
-		}, nil
+	if err == nil {
+		var devices []AudioDevice
+		trimmed := strings.TrimSpace(string(out))
+		if trimmed != "" {
+			if strings.HasPrefix(trimmed, "[") {
+				_ = json.Unmarshal([]byte(trimmed), &devices)
+			} else if strings.HasPrefix(trimmed, "{") {
+				var single AudioDevice
+				if json.Unmarshal([]byte(trimmed), &single) == nil {
+					devices = append(devices, single)
+				}
+			}
+			if len(devices) > 0 {
+				return devices, nil
+			}
+		}
 	}
 
-	trimmed := strings.TrimSpace(string(out))
-	if trimmed == "" {
-		return []AudioDevice{
-			{ID: "default", Name: "Default System Speaker / Output", IsDefault: true},
-		}, nil
-	}
-
+	// Fallback devices
 	return []AudioDevice{
-		{ID: "default", Name: "Default Playback Device", IsDefault: true},
-		{ID: "speakers", Name: "Internal Laptop Speakers (Override Headset)", IsDefault: false},
+		{ID: "{70411993-6daa-4d9b-a367-c1d031d29d54}", Name: "Speakers (Realtek(R) Audio)", IsDefault: true},
+		{ID: "default", Name: "Default System Speaker / Output", IsDefault: false},
 	}, nil
 }
 

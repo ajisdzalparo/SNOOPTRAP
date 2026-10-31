@@ -340,11 +340,24 @@ func (a *App) ensureTelegramListener() {
 		},
 		func() {
 			a.addLog("[REMOTE] Alarm siren triggered from Telegram! Maximizing volume to 100%...")
+			audio.MaximizeMasterVolume()
+			if a.ctx != nil {
+				wailsRuntime.EventsEmit(a.ctx, "play-alarm-siren", nil)
+			}
 			audio.PlayAlarmSiren()
 		},
 		func() {
 			a.addLog("[REMOTE] Alarm siren stopped from Telegram.")
+			if a.ctx != nil {
+				wailsRuntime.EventsEmit(a.ctx, "stop-alarm-siren", nil)
+			}
 			audio.StopAlarm()
+		},
+		func() {
+			a.addLog("[REMOTE] Photo capture requested from Telegram! Emitting capture-photo-now...")
+			if a.ctx != nil {
+				wailsRuntime.EventsEmit(a.ctx, "capture-photo-now", nil)
+			}
 		},
 	)
 }
@@ -524,6 +537,7 @@ Laptop Anda sedang dijaga penuh (Mode Senyap). Jika mouse/keyboard digunakan ole
 📋 <b>Panduan Perintah Telegram:</b>
 🛡️ <b>/arm</b> — Aktifkan mode siaga
 🔓 <b>/disarm</b> — Matikan siaga / buka kuncian
+📸 <b>/foto</b> — Ambil foto penyusup terbaru via webcam
 🔊 <b>/alarm</b> — Bunyikan sirine keras (volume 100%)
 🔇 <b>/stopalarm</b> — Matikan bunyi sirine
 🔴 <b>/stream</b> — Tonton siaran langsung kamera & mic real-time

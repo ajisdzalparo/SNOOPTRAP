@@ -9,6 +9,9 @@ import {
   Shield,
   AlertTriangle,
   RotateCcw,
+  Upload,
+  Download,
+  Video,
 } from 'lucide-react';
 import { WailsBridge } from '../services/wailsBridge';
 
@@ -296,17 +299,17 @@ export const Lockbox: FC<LockboxProps> = ({
               {recordingStatus === 'recording' && (
                 <div className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-[#FF003C]/20 border border-[#FF003C] text-[#FF003C] text-xs font-bold tracking-widest animate-pulse">
                   <span className="w-2.5 h-2.5 rounded-full bg-[#FF003C] animate-ping" />
-                  <span>🔴 MEREKAM BUKTI VIDEO & AUDIO CCTV ({recordingSecondsLeft} DETIK)</span>
+                  <span><Video className="w-3 h-3" /> RECORDING...  ({recordingSecondsLeft} DETIK)</span>
                 </div>
               )}
               {recordingStatus === 'uploading' && (
                 <div className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-[#ffbb00]/20 border border-[#ffbb00] text-[#ffbb00] text-xs font-bold tracking-widest animate-pulse">
-                  <span>⬆️ MENGIRIM REKAMAN BUKTI VIDEO KE TELEGRAM...</span>
+                  <span><Upload className="w-3 h-3" /> UPLOADING DATA...</span>
                 </div>
               )}
               {recordingStatus === 'uploaded' && (
                 <div className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-[#00FF41]/20 border border-[#00FF41] text-[#00FF41] text-xs font-bold tracking-widest">
-                  <span>✅ BUKTI REKAMAN VIDEO SUDAH TERKIRIM KE TELEGRAM!</span>
+                  <span><Download className="w-3 h-3" /> DATA UPLOADED TO SERVER!</span>
                 </div>
               )}
 

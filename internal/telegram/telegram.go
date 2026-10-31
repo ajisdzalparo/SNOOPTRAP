@@ -148,7 +148,7 @@ func (c *Client) sendMediaFile(url, fieldName, filename, mimeType string, data [
 		_ = writer.WriteField("supports_streaming", "true")
 	}
 
-	replyMarkup := `{"inline_keyboard":[[{"text":"🔓 SAYA SENDIRI (DISARM)","callback_data":"disarm"}],[{"text":"🔊 BUNYIKAN ALARM (100%)","callback_data":"alarm"},{"text":"🔇 STOP ALARM","callback_data":"stop_alarm"}],[{"text":"🚨 KUNCI PERMANEN (NUKE)","callback_data":"nuke"}]]}`
+	replyMarkup := `{"inline_keyboard":[[{"text":"🔓 SAYA SENDIRI (DISARM)","callback_data":"disarm"}],[{"text":"📸 AMBIL FOTO LAGI","callback_data":"capture_photo"}],[{"text":"🔊 BUNYIKAN ALARM (100%)","callback_data":"alarm"},{"text":"🔇 STOP ALARM","callback_data":"stop_alarm"}],[{"text":"🚨 KUNCI PERMANEN (NUKE)","callback_data":"nuke"}]]}`
 	_ = writer.WriteField("reply_markup", replyMarkup)
 
 	h := make(textproto.MIMEHeader)
@@ -194,7 +194,7 @@ func (c *Client) SendBreachAlertMessage(text string) error {
 	}
 
 	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", c.botToken)
-	replyMarkup := `{"inline_keyboard":[[{"text":"🔓 SAYA SENDIRI (DISARM)","callback_data":"disarm"}],[{"text":"🔊 BUNYIKAN ALARM (100%)","callback_data":"alarm"},{"text":"🔇 STOP ALARM","callback_data":"stop_alarm"}],[{"text":"🚨 KUNCI PERMANEN (NUKE)","callback_data":"nuke"}]]}`
+	replyMarkup := `{"inline_keyboard":[[{"text":"🔓 SAYA SENDIRI (DISARM)","callback_data":"disarm"}],[{"text":"📸 AMBIL FOTO LAGI","callback_data":"capture_photo"}],[{"text":"🔊 BUNYIKAN ALARM (100%)","callback_data":"alarm"},{"text":"🔇 STOP ALARM","callback_data":"stop_alarm"}],[{"text":"🚨 KUNCI PERMANEN (NUKE)","callback_data":"nuke"}]]}`
 
 	payload := map[string]interface{}{
 		"chat_id":      c.chatID,
@@ -363,7 +363,7 @@ func (c *Client) AnswerCallback(callbackID, text string) {
 }
 
 // StartPolling listens for remote commands, inline button taps, and voice broadcast messages with real-time HTTP long polling
-func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(), onAudioBroadcast func(audioBase64 string, mimeType string), onArm func(), onStatus func() string, onGetStreamURL func() string, onAlarm func(), onStopAlarm func()) {
+func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(), onAudioBroadcast func(audioBase64 string, mimeType string), onArm func(), onStatus func() string, onGetStreamURL func() string, onAlarm func(), onStopAlarm func(), onCapturePhoto func()) {
 	if c.botToken == "" {
 		return
 	}
@@ -453,6 +453,11 @@ func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(
 								onArm()
 							}
 						}()
+					} else if cb.Data == "capture_photo" || cb.Data == "foto" || cb.Data == "photo" {
+						c.AnswerCallback(cb.ID, "📸 Mengambil foto penyusup...")
+						if onCapturePhoto != nil {
+							go onCapturePhoto()
+						}
 					} else if cb.Data == "alarm" {
 						c.AnswerCallback(cb.ID, "🔊 Alarm Sirine 100% Dibunyikan!")
 						if onAlarm != nil {
@@ -526,6 +531,11 @@ func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(
 								_ = c.SendAlertMessage("⚠️ Menyiapkan feed live stream... Coba kirim /stream lagi dalam 2 detik.")
 							}
 						}()
+					} else if (txt == "/foto" || txt == "/photo" || txt == "/capture" || txt == "/ambilfoto" || txt == "foto" || txt == "photo") && onCapturePhoto != nil {
+						go func() {
+							_ = c.SendAlertMessage("📸 <b>Mengambil foto bukti terbaru dari webcam...</b>\nFoto akan masuk dalam 2 detik.")
+							onCapturePhoto()
+						}()
 					} else if (txt == "/alarm" || txt == "/sirine" || txt == "/siren" || txt == "alarm" || txt == "sirine") && onAlarm != nil {
 						go func() {
 							onAlarm()
@@ -553,6 +563,7 @@ func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(
 Perintah yang tersedia:
 🛡️ <b>/arm</b> : Aktifkan mode siaga sekarang
 🔓 <b>/disarm</b> : Matikan siaga / buka kuncian
+📸 <b>/foto</b> : Ambil foto penyusup terbaru via webcam
 🔊 <b>/alarm</b> : Bunyikan sirine alarm keras (volume 100%)
 🔇 <b>/stopalarm</b> : Hentikan bunyi sirine alarm
 🔴 <b>/stream</b> : Tonton siaran langsung kamera & mic real-time
