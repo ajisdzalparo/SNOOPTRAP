@@ -29,7 +29,7 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 5, G: 5, B: 5, A: 255},
-		HideWindowOnClose: true,
+		HideWindowOnClose: false,
 		OnStartup:        app.startup,
 		OnBeforeClose:    app.beforeClose,
 		Bind: []interface{}{

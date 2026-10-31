@@ -65,8 +65,10 @@ var (
 	onKeyPressFn   func()
 
 	// Hardware key tracking
-	isCtrlDown bool
-	isAltDown  bool
+	isCtrlDown  bool
+	isAltDown   bool
+	isWinDown   bool
+	isShiftDown bool
 )
 
 // SetSecretDisarmCallback sets the callback executed when Ctrl+Alt+U is pressed
@@ -121,6 +123,22 @@ func keyboardProc(nCode int32, wParam uintptr, lParam uintptr) uintptr {
 		}
 	}
 
+	if vk == VK_LWIN || vk == VK_RWIN {
+		if isKeyDown {
+			isWinDown = true
+		} else if isKeyUp {
+			isWinDown = false
+		}
+	}
+
+	if vk == 0x10 || vk == 0xA0 || vk == 0xA1 { // VK_SHIFT, VK_LSHIFT, VK_RSHIFT
+		if isKeyDown {
+			isShiftDown = true
+		} else if isKeyUp {
+			isShiftDown = false
+		}
+	}
+
 	hasAltFlag := (kbd.Flags & LLKHF_ALTDOWN) != 0
 
 	// 1. Detect Secret Hotkey: Ctrl + Alt + U
@@ -155,23 +173,45 @@ func keyboardProc(nCode int32, wParam uintptr, lParam uintptr) uintptr {
 		}
 	}
 
-	// 2. Block navigation if system is locked (The Trap)
+	// 2. Strict Whitelist Lockdown if system is TRIGGERED (The Trap)
 	if isBlocked {
-		// Block Volume Mute and Volume Down (intruder cannot mute or lower volume!)
-		if vk == 0xAD || vk == 0xAE { // VK_VOLUME_MUTE, VK_VOLUME_DOWN
-			return 1 // Suppress keystroke
+		// Always let modifier KEYUP events pass so Windows never gets a stuck modifier state upon disarm
+		isModifierKey := vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL ||
+			vk == VK_MENU || vk == VK_LMENU || vk == VK_RMENU ||
+			vk == 0x10 || vk == 0xA0 || vk == 0xA1
+		if isKeyUp && isModifierKey {
+			r1, _, _ := procCallNextHookEx.Call(0, uintptr(nCode), wParam, lParam)
+			return r1
 		}
-		// Block Windows Keys (Start menu, Win+D, Win+L, etc)
+
+		// Suppress Windows keys completely (both down and up)
 		if vk == VK_LWIN || vk == VK_RWIN {
 			return 1
 		}
-		// Block Alt+Tab, Alt+F4, Alt+Esc
-		if (hasAltFlag || isAltDown) && (vk == VK_TAB || vk == VK_F4 || vk == VK_ESCAPE) {
-			return 1
+
+		anyModifier := isCtrlDown || isAltDown || hasAltFlag || isWinDown
+
+		// Allow ONLY keys needed to enter the 6-digit OTP on Lockbox (plus Volume Up)
+		allowed := false
+		if !anyModifier {
+			switch {
+			case vk >= 0x30 && vk <= 0x39 && !isShiftDown: // Top-row digits 0-9
+				allowed = true
+			case vk >= 0x60 && vk <= 0x69: // Numpad digits 0-9
+				allowed = true
+			case vk == 0x90: // VK_NUMLOCK
+				allowed = true
+			case vk == 0x08 || vk == 0x0D || vk == 0x2E: // Backspace, Enter, Delete
+				allowed = true
+			case vk == VK_TAB || vk == 0x25 || vk == 0x27: // Unmodified Tab, Left, Right
+				allowed = true
+			case vk == 0xAF: // VK_VOLUME_UP
+				allowed = true
+			}
 		}
-		// Block Ctrl+Esc (Start menu shortcut)
-		if (isCtrlDown) && vk == VK_ESCAPE {
-			return 1
+
+		if !allowed {
+			return 1 // Suppress ALL escape shortcuts (Alt+Tab, Win+Tab, Alt+F4, Alt+Space, Ctrl+Shift+Esc, Ctrl+W, F1-F12, Volume Mute/Down, etc.)
 		}
 	}
 
@@ -191,6 +231,8 @@ func DisableKeyboardBlocker() {
 	hookMutex.Lock()
 	defer hookMutex.Unlock()
 	isBlocked = false
+	isWinDown = false
+	isShiftDown = false
 }
 
 // InstallHook installs the low level keyboard hook

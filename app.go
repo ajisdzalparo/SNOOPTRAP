@@ -130,6 +130,12 @@ func (a *App) startup(ctx context.Context) {
 		},
 		OnQuit: func() {
 			a.mu.Lock()
+			if a.status == "TRIGGERED" {
+				a.mu.Unlock()
+				a.addLog("[SECURITY] System tray quit attempt blocked during Lockdown!")
+				go failsafe.ForceFullscreenLockbox()
+				return
+			}
 			a.isQuitting = true
 			a.mu.Unlock()
 			tray.RemoveTray()
@@ -411,9 +417,10 @@ func (a *App) DisarmSystem(passcode string) bool {
 	audio.StopAlarm()
 
 	// Exit fullscreen & topmost and dismiss window back to background/tray
-	failsafe.RestoreNormalWindow()
+	failsafe.StopLockdownWatchdog()
 	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, false)
 	wailsRuntime.WindowUnfullscreen(a.ctx)
+	failsafe.RestoreNormalWindow()
 	wailsRuntime.WindowSetSize(a.ctx, 1024, 768)
 	wailsRuntime.WindowCenter(a.ctx)
 	wailsRuntime.WindowHide(a.ctx)
@@ -440,14 +447,14 @@ func (a *App) TriggerTrap() {
 	a.addLog("[BREACH] UNAUTHORIZED INPUT DETECTED! INITIATING SILENT PRE-ALERT CAPTURE.")
 	a.addLog("[REC] Stealth camera & audio recording initiated before alert shock.")
 
-	// 1. Immediately trap the intruder: Fullscreen, AlwaysOnTop, and BLOCK Windows key / Alt+Tab
+	// 1. Immediately trap the intruder: Fullscreen, AlwaysOnTop, strict Keyboard Whitelist, and 50ms Win32 Lockdown Watchdog
 	wailsRuntime.WindowShow(a.ctx)
 	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
 	wailsRuntime.WindowFullscreen(a.ctx)
 	hook.EnableKeyboardBlocker()
 
-	// Win32 Force Foreground & 100% Screen-Coverage over all apps/taskbar
-	failsafe.ForceFullscreenLockbox()
+	// Win32 Force Foreground, Task View/Taskbar Invisibility, Cursor Confinement & 50ms Watchdog
+	failsafe.StartLockdownWatchdog()
 
 	// Consistent WebRTC stream room & URL
 	roomID := a.GetStreamRoomID()
@@ -599,22 +606,24 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 	quitting := a.isQuitting
 	a.mu.RUnlock()
 
-	// If system is in Lockdown (TRIGGERED), block closing the window completely!
+	// ABSOLUTE LOCKDOWN: If system is TRIGGERED, completely block closing OR hiding the window!
 	if st == "TRIGGERED" {
-		a.addLog("[SECURITY] Close window attempt blocked. SnoopTrap is in Lockdown!")
-		return true // Prevent close!
+		a.addLog("[SECURITY] Close window attempt blocked! Absolute Lockdown active.")
+		go failsafe.ForceFullscreenLockbox()
+		return true // Prevent close & never hide!
 	}
 
-	// In DISARMED mode or explicit quit requested, allow normal exit and clean up tray
-	if quitting || st == "DISARMED" {
+	// Explicit Quit requested from System Tray when NOT triggered
+	if quitting {
+		failsafe.StopLockdownWatchdog()
 		tray.RemoveTray()
-		return false // Allow normal close
+		return false // Allow normal exit
 	}
 
-	// In ARMED mode: Hide window to System Tray
+	// Clicking [X] on Dashboard in DISARMED or ARMED mode hides window to System Tray so guardian stays active
 	wailsRuntime.WindowHide(a.ctx)
 	a.addLog("[SYSTEM] Window minimized to background/tray. SnoopTrap guardian active.")
-	return true // Prevent process exit so it continues guarding in background
+	return true
 }
 
 // EmergencyLock triggers Windows Lock Screen immediately
