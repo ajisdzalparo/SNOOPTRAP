@@ -48,6 +48,7 @@ type App struct {
 	isAutoArmed        bool
 	isQuitting         bool
 	restoredFromReboot bool
+	lastDisarmAt       time.Time
 
 	// Intentional Activity Detection (Filters accidental desk bumps / shifts)
 	armedKeypressCount          int
@@ -425,10 +426,18 @@ func (a *App) startIdleMonitor() {
 			currentState := a.status
 			threshold := a.cfg.IdleThresholdSeconds
 			autoArm := a.cfg.AutoArm
+			lastDisarm := a.lastDisarmAt
 			a.mu.RUnlock()
 
-			// 1. Auto arm when disarmed and idle long enough
+			// 1. Auto arm when disarmed and idle long enough.
+			// Cooldown: the low-level keyboard hook swallows keys during a TRIGGERED
+			// lockdown, so Windows' GetLastInputInfo (and therefore idleSecs) stays stale
+			// right after a disarm. Require a full fresh idle period measured from the
+			// disarm moment so we don't instantly re-arm and re-trigger the PIN lockdown.
 			if autoArm && currentState == "DISARMED" && idleSecs >= threshold {
+				if !lastDisarm.IsZero() && time.Since(lastDisarm) < time.Duration(threshold)*time.Second {
+					continue
+				}
 				a.mu.Lock()
 				a.isAutoArmed = true
 				a.mu.Unlock()
@@ -577,6 +586,11 @@ func (a *App) DisarmSystem(passcode string) bool {
 	a.status = "DISARMED"
 	a.isAutoArmed = false
 	a.currentOTP = ""
+	a.lastDisarmAt = time.Now()
+	// Reset intentional-activity accumulators so a stale burst can't instantly re-trigger
+	a.suspiciousActivityStartedAt = time.Time{}
+	a.consecutiveInputTicks = 0
+	a.armedKeypressCount = 0
 	a.mu.Unlock()
 
 	a.persistState()
