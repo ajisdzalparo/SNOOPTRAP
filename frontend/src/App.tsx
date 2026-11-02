@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import Peer from 'peerjs';
 import { Lockbox } from './components/Lockbox';
 import { Dashboard } from './components/Dashboard';
 import { WailsBridge } from './services/wailsBridge';
@@ -21,8 +20,6 @@ export function App() {
   const frameIntervalRef = useRef<any>(null);
   const isRecordingRef = useRef<boolean>(false);
   const sirenAudioRef = useRef<HTMLAudioElement | null>(null);
-  const peerRef = useRef<Peer | null>(null);
-  const peerRoomRef = useRef<string>('');
 
   // Directly route audio to internal laptop speakers (Speakers Realtek) even if headphones are plugged in
   const routeAudioToLaptopSpeaker = async (audioElem: HTMLAudioElement) => {
@@ -328,108 +325,6 @@ export function App() {
     }
   };
 
-  // Acquire (or reuse) the live camera + mic MediaStream for streaming.
-  const acquireLiveStream = async (): Promise<MediaStream> => {
-    if (streamRef.current && streamRef.current.active) {
-      return streamRef.current;
-    }
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480, frameRate: 20 },
-        audio: true,
-      });
-    } catch (micErr) {
-      console.warn('Microphone unavailable, fallback to video-only:', micErr);
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480, frameRate: 20 },
-        audio: false,
-      });
-    }
-    streamRef.current = stream;
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.play().catch(() => {});
-    }
-    return stream;
-  };
-
-  // Register this laptop as a PeerJS peer (ID = stream room) on the public PeerJS cloud,
-  // matching the deployed WebRTC viewer. The viewer does peer.call(room); we answer with
-  // the live camera + mic stream. Kept registered persistently so the viewer never hits
-  // "peer-unavailable" (laptop offline); the camera is only acquired when a call arrives.
-  const initPeerSurveillance = async () => {
-    try {
-      const roomId = await WailsBridge.getStreamRoomID();
-      if (!roomId) return;
-
-      // Already registered for this room — nothing to do.
-      if (peerRef.current && !(peerRef.current as any).destroyed && peerRoomRef.current === roomId) {
-        return;
-      }
-      if (peerRef.current) {
-        try { peerRef.current.destroy(); } catch {}
-        peerRef.current = null;
-      }
-
-      const peer = new Peer(roomId, {
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' },
-          ],
-        },
-      });
-      peerRef.current = peer;
-      peerRoomRef.current = roomId;
-
-      peer.on('open', (id) => {
-        console.log('[PEER] Surveillance peer registered on PeerJS cloud as:', id);
-      });
-
-      // A phone viewer is calling in — answer with the live camera + mic feed.
-      peer.on('call', async (call) => {
-        try {
-          const stream = await acquireLiveStream();
-          call.answer(stream);
-          console.log('[PEER] Incoming viewer call answered with live camera + mic stream.');
-        } catch (err) {
-          console.error('[PEER] Failed to answer viewer call:', err);
-        }
-      });
-
-      peer.on('disconnected', () => {
-        // Lost the signaling connection to the broker — reconnect without dropping the ID.
-        try { peer.reconnect(); } catch {}
-      });
-
-      peer.on('error', (err: any) => {
-        const t = err?.type;
-        if (t === 'unavailable-id') {
-          // A stale peer with this ID is still lingering on the broker — retry shortly.
-          console.warn('[PEER] Peer ID taken, retrying in 4s:', err);
-          setTimeout(() => {
-            peerRoomRef.current = '';
-            initPeerSurveillance();
-          }, 4000);
-        } else if (t === 'network' || t === 'server-error' || t === 'socket-error' || t === 'socket-closed') {
-          console.warn('[PEER] Broker connection issue, retrying in 5s:', t);
-          setTimeout(() => {
-            peerRoomRef.current = '';
-            initPeerSurveillance();
-          }, 5000);
-        } else {
-          console.warn('[PEER] PeerJS notice:', t, err?.message);
-        }
-      });
-    } catch (e) {
-      console.error('Peer surveillance init error:', e);
-    }
-  };
-
   // Live-stream only: acquire the camera on demand (e.g. remote /stream request while
   // DISARMED/ARMED with no breach) and broadcast over WebSocket, WITHOUT capturing the
   // breach photos/10s video evidence that startBreachSurveillance sends to Telegram.
@@ -646,9 +541,6 @@ export function App() {
       recordIntruderAudioOnDemand();
     });
 
-    // Register the PeerJS surveillance peer so the remote WebRTC viewer can connect anytime
-    initPeerSurveillance();
-
     // Fetch initial logs & status
     WailsBridge.getLogs().then((initialLogs) => {
       if (initialLogs && initialLogs.length > 0) {
@@ -692,12 +584,8 @@ export function App() {
     });
 
     WailsBridge.onEvent('start-stream-feed', (room: string) => {
-      // Ensure the PeerJS peer is registered for this room so the deployed WebRTC viewer
-      // (peer.call(room)) can reach us. This is the primary path for the remote relay.
-      if (peerRoomRef.current !== room || !peerRef.current || (peerRef.current as any).destroyed) {
-        initPeerSurveillance();
-      }
-      // Also drive the local LAN viewer (port 8765, WebSocket JPEG) if its camera is up.
+      // Reuse the live camera if a breach already started it, otherwise acquire it on demand
+      // so a remote /stream request works even when idle (no breach yet).
       if (streamRef.current && streamRef.current.active) {
         startWebSocketStream(room, streamRef.current);
       } else {
@@ -724,10 +612,6 @@ export function App() {
 
     return () => {
       clearInterval(statusInterval);
-      if (peerRef.current) {
-        try { peerRef.current.destroy(); } catch {}
-        peerRef.current = null;
-      }
     };
   }, []);
 

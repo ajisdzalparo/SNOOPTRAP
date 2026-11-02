@@ -194,12 +194,6 @@ export const WailsBridge = {
     return '';
   },
 
-  async getStreamRoomID(): Promise<string> {
-    if ((window as any).go?.main?.App?.GetStreamRoomID) {
-      return await (window as any).go.main.App.GetStreamRoomID();
-    }
-    return '';
-  },
 
   async playRemoteVoice(audioBase64: string, mimeType: string): Promise<void> {
     if ((window as any).go?.main?.App?.PlayRemoteVoice) {
