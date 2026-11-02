@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import Peer from 'peerjs';
 import { Lockbox } from './components/Lockbox';
 import { Dashboard } from './components/Dashboard';
 import { WailsBridge } from './services/wailsBridge';
@@ -21,8 +20,6 @@ export function App() {
   const frameIntervalRef = useRef<any>(null);
   const isRecordingRef = useRef<boolean>(false);
   const sirenAudioRef = useRef<HTMLAudioElement | null>(null);
-  const peerRef = useRef<Peer | null>(null);
-  const peerRoomRef = useRef<string>('');
 
   // Directly route audio to internal laptop speakers (Speakers Realtek) even if headphones are plugged in
   const routeAudioToLaptopSpeaker = async (audioElem: HTMLAudioElement) => {
@@ -328,116 +325,6 @@ export function App() {
     }
   };
 
-  // Acquire (or reuse) the live camera + mic MediaStream for streaming.
-  const acquireLiveStream = async (): Promise<MediaStream> => {
-    if (streamRef.current && streamRef.current.active) {
-      return streamRef.current;
-    }
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480, frameRate: 20 },
-        audio: true,
-      });
-    } catch (micErr) {
-      console.warn('Microphone unavailable, fallback to video-only:', micErr);
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480, frameRate: 20 },
-        audio: false,
-      });
-    }
-    streamRef.current = stream;
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.play().catch(() => {});
-    }
-    return stream;
-  };
-
-  // Register this laptop as a PeerJS peer (ID = stream room) on the public PeerJS cloud,
-  // matching the deployed WebRTC viewer. The viewer does peer.call(room); we answer with
-  // the live camera + mic stream. Kept registered persistently so the viewer never hits
-  // "peer-unavailable" (laptop offline); the camera is only acquired when a call arrives.
-  const plog = (m: string) => {
-    console.log(m);
-    WailsBridge.addFrontendLog(m).catch(() => {});
-  };
-
-  const initPeerSurveillance = async () => {
-    try {
-      const roomId = await WailsBridge.getStreamRoomID();
-      if (!roomId) {
-        // Wails bindings may not be injected yet at first mount — retry until the room is ready.
-        plog('[PEER] Room ID belum siap, retry daftar peer dalam 1.5s...');
-        setTimeout(() => initPeerSurveillance(), 1500);
-        return;
-      }
-
-      // Already registered for this room — nothing to do.
-      if (peerRef.current && !(peerRef.current as any).destroyed && peerRoomRef.current === roomId) {
-        return;
-      }
-      if (peerRef.current) {
-        try { peerRef.current.destroy(); } catch {}
-        peerRef.current = null;
-      }
-
-      // Build ICE servers: Google STUN + the VPS TURN relay (from config, never hardcoded).
-      // TURN is required when laptop & phone are on different networks (NAT) with no direct
-      // P2P path — media is relayed via the VPS.
-      const iceServers: any[] = [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-      ];
-      const cfg = await WailsBridge.getConfig().catch(() => null);
-      if (cfg && cfg.turnUrl && cfg.turnUsername) {
-        iceServers.push({ urls: cfg.turnUrl + '?transport=udp', username: cfg.turnUsername, credential: cfg.turnCredential });
-        iceServers.push({ urls: cfg.turnUrl + '?transport=tcp', username: cfg.turnUsername, credential: cfg.turnCredential });
-        plog('[PEER] TURN relay aktif dari config.');
-      } else {
-        plog('[PEER] ⚠️ TURN belum diset di config (STUN-only) — bisa gagal konek di jaringan ketat.');
-      }
-
-      plog('[PEER] Mendaftarkan laptop sebagai peer, room=' + roomId + ' ...');
-      const peer = new Peer(roomId, { config: { iceServers } });
-      peerRef.current = peer;
-      peerRoomRef.current = roomId;
-
-      peer.on('open', (id) => {
-        plog('[PEER] ✅ Laptop ONLINE sebagai peer di PeerJS cloud: ' + id);
-      });
-
-      // A phone viewer is calling in — answer with the live camera + mic feed.
-      peer.on('call', async (call) => {
-        plog('[PEER] 📞 Ada viewer manggil, mengambil kamera+mic & menjawab...');
-        try {
-          const stream = await acquireLiveStream();
-          call.answer(stream);
-          plog('[PEER] ✅ Panggilan viewer dijawab dengan stream kamera+mic.');
-        } catch (err: any) {
-          plog('[PEER] ❌ Gagal ambil kamera/jawab panggilan: ' + (err?.message || err));
-        }
-      });
-
-      peer.on('disconnected', () => {
-        plog('[PEER] ⚠️ Terputus dari broker, reconnect...');
-        try { peer.reconnect(); } catch {}
-      });
-
-      peer.on('error', (err: any) => {
-        const t = err?.type;
-        plog('[PEER] ❗ error: ' + t + ' - ' + (err?.message || ''));
-        if (t === 'unavailable-id') {
-          setTimeout(() => { peerRoomRef.current = ''; initPeerSurveillance(); }, 4000);
-        } else if (t === 'network' || t === 'server-error' || t === 'socket-error' || t === 'socket-closed') {
-          setTimeout(() => { peerRoomRef.current = ''; initPeerSurveillance(); }, 5000);
-        }
-      });
-    } catch (e: any) {
-      plog('[PEER] ❌ init error: ' + (e?.message || e));
-    }
-  };
-
   // Live-stream only: acquire the camera on demand (e.g. remote /stream request while
   // DISARMED/ARMED with no breach) and broadcast over WebSocket, WITHOUT capturing the
   // breach photos/10s video evidence that startBreachSurveillance sends to Telegram.
@@ -654,9 +541,6 @@ export function App() {
       recordIntruderAudioOnDemand();
     });
 
-    // Register the PeerJS surveillance peer so the remote WebRTC viewer can connect anytime
-    initPeerSurveillance();
-
     // Fetch initial logs & status
     WailsBridge.getLogs().then((initialLogs) => {
       if (initialLogs && initialLogs.length > 0) {
@@ -700,12 +584,8 @@ export function App() {
     });
 
     WailsBridge.onEvent('start-stream-feed', (room: string) => {
-      // Ensure the PeerJS peer is registered for this room so the deployed WebRTC viewer
-      // (peer.call(room)) can reach us. This is the primary path for the remote relay.
-      if (peerRoomRef.current !== room || !peerRef.current || (peerRef.current as any).destroyed) {
-        initPeerSurveillance();
-      }
-      // Also drive the local LAN viewer (port 8765, WebSocket JPEG) if its camera is up.
+      // Reuse the live camera if a breach already started it, otherwise acquire it on demand
+      // so a remote /stream request works even when idle (no breach yet).
       if (streamRef.current && streamRef.current.active) {
         startWebSocketStream(room, streamRef.current);
       } else {
@@ -732,10 +612,6 @@ export function App() {
 
     return () => {
       clearInterval(statusInterval);
-      if (peerRef.current) {
-        try { peerRef.current.destroy(); } catch {}
-        peerRef.current = null;
-      }
     };
   }, []);
 
