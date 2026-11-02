@@ -366,6 +366,12 @@ func (a *App) ensureTelegramListener() {
 				wailsRuntime.EventsEmit(a.ctx, "record-audio-now", nil)
 			}
 		},
+		func() {
+			a.addLog("[REMOTE] /stopstream from Telegram! Releasing camera & mic (webcam LED off).")
+			if a.ctx != nil {
+				wailsRuntime.EventsEmit(a.ctx, "stop-stream-feed", nil)
+			}
+		},
 	)
 }
 
@@ -557,6 +563,7 @@ Laptop Anda sedang dijaga penuh (Mode Senyap). Jika mouse/keyboard digunakan ole
 🔊 <b>/alarm</b> — Bunyikan sirine keras (volume 100%)
 🔇 <b>/stopalarm</b> — Matikan bunyi sirine
 🔴 <b>/stream</b> — Tonton siaran langsung kamera & mic real-time
+⚫ <b>/stopstream</b> — Matikan kamera & mic (lampu webcam mati)
 🎙️ <b>Kirim VN (Voice Note)</b> — Suara Anda diputar di speaker laptop (volume 100%)
 🚨 <b>/nuke</b> — Kunci Windows darurat
 📊 <b>/status</b> — Cek status laptop saat ini

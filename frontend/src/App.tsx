@@ -3,6 +3,28 @@ import { Lockbox } from './components/Lockbox';
 import { Dashboard } from './components/Dashboard';
 import { WailsBridge } from './services/wailsBridge';
 
+// ---- PCM <-> base64 helpers (shared by live-stream audio, no codec/container involved) ----
+function int16ToBase64(pcm: Int16Array): string {
+  const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+  let bin = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)));
+  }
+  return btoa(bin);
+}
+
+function base64ToFloat32(b64: string): Float32Array {
+  const bin = atob(b64);
+  const len = bin.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+  const pcm = new Int16Array(bytes.buffer, 0, Math.floor(len / 2));
+  const f32 = new Float32Array(pcm.length);
+  for (let i = 0; i < pcm.length; i++) f32[i] = pcm[i] / 32768;
+  return f32;
+}
+
 export function App() {
   const [, setCurrentState] = useState<'DISARMED' | 'ARMED' | 'TRIGGERED'>('DISARMED');
   const [isLocked, setIsLocked] = useState<boolean>(false);
@@ -15,11 +37,15 @@ export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
-  const micRecorderRef = useRef<MediaRecorder | null>(null);
   const streamWsRef = useRef<WebSocket | null>(null);
   const frameIntervalRef = useRef<any>(null);
   const isRecordingRef = useRef<boolean>(false);
   const sirenAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Live-stream raw-PCM audio (works on iPhone Safari, unlike webm/mp4 MediaRecorder chunks)
+  const micCaptureCtxRef = useRef<AudioContext | null>(null);       // captures laptop mic -> PCM out
+  const micCaptureNodeRef = useRef<ScriptProcessorNode | null>(null);
+  const intercomPlayCtxRef = useRef<AudioContext | null>(null);     // plays phone intercom PCM on laptop speaker
+  const intercomNextTimeRef = useRef<number>(0);
 
   // Directly route audio to internal laptop speakers (Speakers Realtek) even if headphones are plugged in
   const routeAudioToLaptopSpeaker = async (audioElem: HTMLAudioElement) => {
@@ -201,12 +227,7 @@ export function App() {
       clearInterval(frameIntervalRef.current);
       frameIntervalRef.current = null;
     }
-    if (micRecorderRef.current && micRecorderRef.current.state === 'recording') {
-      try {
-        micRecorderRef.current.stop();
-      } catch {}
-      micRecorderRef.current = null;
-    }
+    stopPcmCapture();
     if (streamWsRef.current) {
       try {
         streamWsRef.current.close();
@@ -228,6 +249,73 @@ export function App() {
     isRecordingRef.current = false;
   };
 
+  // ---- Raw PCM audio helpers (container-free, so iPhone Safari can play it) ----
+  const PCM_RATE = 16000; // mono 16kHz Int16 is plenty for voice and light on bandwidth
+
+  // Capture the laptop mic as 16kHz Int16 PCM and send each chunk over the WebSocket.
+  const startPcmCapture = (stream: MediaStream, ws: WebSocket) => {
+    try {
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length === 0) return;
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioCtx();
+      micCaptureCtxRef.current = ctx;
+      const srcRate = ctx.sampleRate; // usually 48000
+      const source = ctx.createMediaStreamSource(new MediaStream(audioTracks));
+      const node = ctx.createScriptProcessor(4096, 1, 1);
+      micCaptureNodeRef.current = node;
+      node.onaudioprocess = (e) => {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        const input = e.inputBuffer.getChannelData(0); // Float32 @ srcRate
+        // downsample srcRate -> PCM_RATE
+        const ratio = srcRate / PCM_RATE;
+        const outLen = Math.floor(input.length / ratio);
+        const pcm = new Int16Array(outLen);
+        for (let i = 0; i < outLen; i++) {
+          const s = input[Math.floor(i * ratio)];
+          pcm[i] = Math.max(-32768, Math.min(32767, s * 32767));
+        }
+        ws.send(JSON.stringify({ type: 'audio_out', pcm: int16ToBase64(pcm), rate: PCM_RATE }));
+      };
+      source.connect(node);
+      // ScriptProcessor only fires when connected downstream; route through a muted gain so there's no local echo
+      const mute = ctx.createGain();
+      mute.gain.value = 0;
+      node.connect(mute);
+      mute.connect(ctx.destination);
+    } catch (err) {
+      console.warn('PCM capture error:', err);
+    }
+  };
+
+  const stopPcmCapture = () => {
+    try { micCaptureNodeRef.current?.disconnect(); } catch {}
+    try { micCaptureCtxRef.current?.close(); } catch {}
+    micCaptureNodeRef.current = null;
+    micCaptureCtxRef.current = null;
+  };
+
+  // Play an incoming Int16 PCM chunk on the laptop speaker (phone intercom "TAHAN BICARA").
+  const playIntercomPcm = (b64: string, rate: number) => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!intercomPlayCtxRef.current) intercomPlayCtxRef.current = new AudioCtx();
+      const ctx = intercomPlayCtxRef.current;
+      ctx.resume?.();
+      const f32 = base64ToFloat32(b64);
+      if (f32.length === 0) return;
+      const buf = ctx.createBuffer(1, f32.length, rate || PCM_RATE);
+      buf.getChannelData(0).set(f32);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      const now = ctx.currentTime;
+      if (intercomNextTimeRef.current < now) intercomNextTimeRef.current = now + 0.05;
+      src.start(intercomNextTimeRef.current);
+      intercomNextTimeRef.current += buf.duration;
+    } catch {}
+  };
+
   const startWebSocketStream = async (targetRoom: string, stream: MediaStream) => {
     try {
       if (streamWsRef.current) {
@@ -238,12 +326,7 @@ export function App() {
         clearInterval(frameIntervalRef.current);
         frameIntervalRef.current = null;
       }
-      if (micRecorderRef.current && micRecorderRef.current.state === 'recording') {
-        try {
-          micRecorderRef.current.stop();
-        } catch {}
-        micRecorderRef.current = null;
-      }
+      stopPcmCapture();
 
       const wsUrl = await WailsBridge.getStreamWebSocketURL();
       if (!wsUrl) return;
@@ -268,42 +351,16 @@ export function App() {
           ws.send(JSON.stringify({ type: 'frame', data: frameData, room: targetRoom }));
         }, 66);
 
-        // 2. Broadcast laptop microphone audio chunks every 400ms
-        const audioTracks = stream.getAudioTracks();
-        if (audioTracks.length > 0) {
-          try {
-            const micStream = new MediaStream(audioTracks);
-            let mime = 'audio/webm';
-            if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/mp4')) {
-              mime = 'audio/mp4';
-            }
-            const micRec = new MediaRecorder(micStream, { mimeType: mime, audioBitsPerSecond: 64000 });
-            micRecorderRef.current = micRec;
-            micRec.ondataavailable = (ev) => {
-              if (ev.data && ev.data.size > 0 && ws.readyState === WebSocket.OPEN) {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                  const b64 = (reader.result as string)?.split(',')[1];
-                  if (b64) {
-                    ws.send(JSON.stringify({ type: 'audio_out', data: b64, mime }));
-                  }
-                };
-                reader.readAsDataURL(ev.data);
-              }
-            };
-            micRec.start(400);
-          } catch (micErr) {
-            console.warn('Microphone audio streaming error:', micErr);
-          }
-        }
+        // 2. Broadcast laptop microphone as raw 16kHz PCM (iPhone Safari can play it; webm/mp4 chunks it can't)
+        startPcmCapture(stream, ws);
       };
 
-      // 3. Receive 2-way intercom voice note from phone viewer holding "TAHAN BICARA"
+      // 3. Receive 2-way intercom voice from phone viewer holding "TAHAN BICARA" (raw PCM -> laptop speaker)
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === 'intercom_speak' && msg.data) {
-            WailsBridge.playRemoteVoice(msg.data, msg.mime || 'audio/webm');
+          if (msg.type === 'intercom_speak' && msg.pcm) {
+            playIntercomPcm(msg.pcm, msg.rate || PCM_RATE);
           }
         } catch {}
       };
@@ -590,6 +647,28 @@ export function App() {
         startWebSocketStream(room, streamRef.current);
       } else {
         startLiveStreamOnly(room);
+      }
+    });
+
+    // Remote /stopstream: shut down the live feed and release the camera so the webcam LED turns off.
+    WailsBridge.onEvent('stop-stream-feed', () => {
+      // Stop broadcasting
+      stopPcmCapture();
+      if (frameIntervalRef.current) {
+        clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
+      }
+      if (streamWsRef.current) {
+        try { streamWsRef.current.close(); } catch {}
+        streamWsRef.current = null;
+      }
+      // Only release the camera/mic if no breach recording is using it (that LED must stay for evidence)
+      if (!isRecordingRef.current && streamRef.current) {
+        try {
+          streamRef.current.getTracks().forEach((t) => t.stop());
+        } catch {}
+        streamRef.current = null;
+        if (videoRef.current) videoRef.current.srcObject = null;
       }
     });
 

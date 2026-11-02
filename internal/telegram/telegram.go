@@ -397,7 +397,7 @@ func (c *Client) AnswerCallback(callbackID, text string) {
 }
 
 // StartPolling listens for remote commands, inline button taps, and voice broadcast messages with real-time HTTP long polling
-func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(), onAudioBroadcast func(audioBase64 string, mimeType string), onArm func(), onStatus func() string, onGetStreamURL func() string, onAlarm func(), onStopAlarm func(), onCapturePhoto func(), onRecordAudio func()) {
+func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(), onAudioBroadcast func(audioBase64 string, mimeType string), onArm func(), onStatus func() string, onGetStreamURL func() string, onAlarm func(), onStopAlarm func(), onCapturePhoto func(), onRecordAudio func(), onStopStream func()) {
 	if c.botToken == "" {
 		return
 	}
@@ -570,6 +570,11 @@ func (c *Client) StartPolling(ctx context.Context, onNuke func(), onUnlock func(
 								_ = c.SendAlertMessage("⚠️ Menyiapkan feed live stream... Coba kirim /stream lagi dalam 2 detik.")
 							}
 						}()
+					} else if (txt == "/stopstream" || txt == "/stoplive" || txt == "/matikamera" || txt == "/offstream" || txt == "stopstream") && onStopStream != nil {
+						go func() {
+							onStopStream()
+							_ = c.SendAlertMessage("⚫ <b>Live Stream Dihentikan.</b>\nKamera & mikrofon laptop sudah dimatikan (lampu webcam mati).\n\nIngin menonton lagi? Kirim /stream.")
+						}()
 					} else if (txt == "/foto" || txt == "/photo" || txt == "/capture" || txt == "/ambilfoto" || txt == "foto" || txt == "photo") && onCapturePhoto != nil {
 						go func() {
 							_ = c.SendAlertMessage("📸 <b>Mengambil foto bukti terbaru dari webcam...</b>\nFoto akan masuk dalam 2 detik.")
@@ -612,6 +617,7 @@ Perintah yang tersedia:
 🔊 <b>/alarm</b> : Bunyikan sirine alarm keras (volume 100%)
 🔇 <b>/stopalarm</b> : Hentikan bunyi sirine alarm
 🔴 <b>/stream</b> : Tonton siaran langsung kamera & mic real-time
+⚫ <b>/stopstream</b> : Matikan kamera & mic (lampu webcam mati)
 🎙️ <b>Kirim Voice Note (VN)</b> : Diputar langsung di speaker laptop (volume 100%)
 🚨 <b>/nuke</b> : Kunci Windows darurat
 📊 <b>/status</b> : Cek status laptop saat ini`
