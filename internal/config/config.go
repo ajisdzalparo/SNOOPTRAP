@@ -19,6 +19,11 @@ type Config struct {
 	StreamServerHost           string `json:"streamServerHost"`
 	StreamServerPort           string `json:"streamServerPort"`
 	StreamRelayServerURL       string `json:"streamRelayServerUrl"`
+	// WebRTC TURN relay (keeps media flowing when direct P2P fails behind NAT).
+	// e.g. TurnURL "turn:139.190.98.100:3478". Left empty = STUN-only.
+	TurnURL        string `json:"turnUrl"`
+	TurnUsername   string `json:"turnUsername"`
+	TurnCredential string `json:"turnCredential"`
 }
 
 func DefaultConfig() *Config {
@@ -35,6 +40,9 @@ func DefaultConfig() *Config {
 		StreamServerHost:           "",
 		StreamServerPort:           "8080",
 		StreamRelayServerURL:       "",
+		TurnURL:                    "",
+		TurnUsername:               "",
+		TurnCredential:             "",
 	}
 }
 

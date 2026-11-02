@@ -934,6 +934,12 @@ func (a *App) TestServerConnection(host string, port string) ServerTestResult {
 	}
 }
 
+// AddFrontendLog lets the WebView frontend push a diagnostic line into the shared log
+// (used for PeerJS / streaming debugging, since the WebView console is not visible externally)
+func (a *App) AddFrontendLog(msg string) {
+	a.addLog(msg)
+}
+
 // GetStreamRoomID returns the active WebRTC stream room ID or creates a persistent one
 func (a *App) GetStreamRoomID() string {
 	room := stream.GetCurrentRoomID()

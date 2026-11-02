@@ -358,10 +358,20 @@ export function App() {
   // matching the deployed WebRTC viewer. The viewer does peer.call(room); we answer with
   // the live camera + mic stream. Kept registered persistently so the viewer never hits
   // "peer-unavailable" (laptop offline); the camera is only acquired when a call arrives.
+  const plog = (m: string) => {
+    console.log(m);
+    WailsBridge.addFrontendLog(m).catch(() => {});
+  };
+
   const initPeerSurveillance = async () => {
     try {
       const roomId = await WailsBridge.getStreamRoomID();
-      if (!roomId) return;
+      if (!roomId) {
+        // Wails bindings may not be injected yet at first mount — retry until the room is ready.
+        plog('[PEER] Room ID belum siap, retry daftar peer dalam 1.5s...');
+        setTimeout(() => initPeerSurveillance(), 1500);
+        return;
+      }
 
       // Already registered for this room — nothing to do.
       if (peerRef.current && !(peerRef.current as any).destroyed && peerRoomRef.current === roomId) {
@@ -372,61 +382,59 @@ export function App() {
         peerRef.current = null;
       }
 
-      const peer = new Peer(roomId, {
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' },
-          ],
-        },
-      });
+      // Build ICE servers: Google STUN + the VPS TURN relay (from config, never hardcoded).
+      // TURN is required when laptop & phone are on different networks (NAT) with no direct
+      // P2P path — media is relayed via the VPS.
+      const iceServers: any[] = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ];
+      const cfg = await WailsBridge.getConfig().catch(() => null);
+      if (cfg && cfg.turnUrl && cfg.turnUsername) {
+        iceServers.push({ urls: cfg.turnUrl + '?transport=udp', username: cfg.turnUsername, credential: cfg.turnCredential });
+        iceServers.push({ urls: cfg.turnUrl + '?transport=tcp', username: cfg.turnUsername, credential: cfg.turnCredential });
+        plog('[PEER] TURN relay aktif dari config.');
+      } else {
+        plog('[PEER] ⚠️ TURN belum diset di config (STUN-only) — bisa gagal konek di jaringan ketat.');
+      }
+
+      plog('[PEER] Mendaftarkan laptop sebagai peer, room=' + roomId + ' ...');
+      const peer = new Peer(roomId, { config: { iceServers } });
       peerRef.current = peer;
       peerRoomRef.current = roomId;
 
       peer.on('open', (id) => {
-        console.log('[PEER] Surveillance peer registered on PeerJS cloud as:', id);
+        plog('[PEER] ✅ Laptop ONLINE sebagai peer di PeerJS cloud: ' + id);
       });
 
       // A phone viewer is calling in — answer with the live camera + mic feed.
       peer.on('call', async (call) => {
+        plog('[PEER] 📞 Ada viewer manggil, mengambil kamera+mic & menjawab...');
         try {
           const stream = await acquireLiveStream();
           call.answer(stream);
-          console.log('[PEER] Incoming viewer call answered with live camera + mic stream.');
-        } catch (err) {
-          console.error('[PEER] Failed to answer viewer call:', err);
+          plog('[PEER] ✅ Panggilan viewer dijawab dengan stream kamera+mic.');
+        } catch (err: any) {
+          plog('[PEER] ❌ Gagal ambil kamera/jawab panggilan: ' + (err?.message || err));
         }
       });
 
       peer.on('disconnected', () => {
-        // Lost the signaling connection to the broker — reconnect without dropping the ID.
+        plog('[PEER] ⚠️ Terputus dari broker, reconnect...');
         try { peer.reconnect(); } catch {}
       });
 
       peer.on('error', (err: any) => {
         const t = err?.type;
+        plog('[PEER] ❗ error: ' + t + ' - ' + (err?.message || ''));
         if (t === 'unavailable-id') {
-          // A stale peer with this ID is still lingering on the broker — retry shortly.
-          console.warn('[PEER] Peer ID taken, retrying in 4s:', err);
-          setTimeout(() => {
-            peerRoomRef.current = '';
-            initPeerSurveillance();
-          }, 4000);
+          setTimeout(() => { peerRoomRef.current = ''; initPeerSurveillance(); }, 4000);
         } else if (t === 'network' || t === 'server-error' || t === 'socket-error' || t === 'socket-closed') {
-          console.warn('[PEER] Broker connection issue, retrying in 5s:', t);
-          setTimeout(() => {
-            peerRoomRef.current = '';
-            initPeerSurveillance();
-          }, 5000);
-        } else {
-          console.warn('[PEER] PeerJS notice:', t, err?.message);
+          setTimeout(() => { peerRoomRef.current = ''; initPeerSurveillance(); }, 5000);
         }
       });
-    } catch (e) {
-      console.error('Peer surveillance init error:', e);
+    } catch (e: any) {
+      plog('[PEER] ❌ init error: ' + (e?.message || e));
     }
   };
 

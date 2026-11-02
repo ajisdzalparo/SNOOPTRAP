@@ -14,6 +14,9 @@ export interface Config {
   streamServerHost?: string;
   streamServerPort?: string;
   streamRelayServerUrl?: string;
+  turnUrl?: string;
+  turnUsername?: string;
+  turnCredential?: string;
 }
 
 export interface AudioDevice {
@@ -199,6 +202,12 @@ export const WailsBridge = {
       return await (window as any).go.main.App.GetStreamRoomID();
     }
     return '';
+  },
+
+  async addFrontendLog(msg: string): Promise<void> {
+    if ((window as any).go?.main?.App?.AddFrontendLog) {
+      await (window as any).go.main.App.AddFrontendLog(msg);
+    }
   },
 
   async playRemoteVoice(audioBase64: string, mimeType: string): Promise<void> {
